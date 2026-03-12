@@ -22,12 +22,8 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 1,
+          "SelectedChildIndex": 0,
           "Children": [
-            {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{cce594b6-0c39-4442-ba28-10c64ac7e89f}"
-            },
             {
               "$type": "Document",
               "DocumentIndex": 0,
@@ -36,7 +32,7 @@
               "RelativeDocumentMoniker": "TestApp\\ResponseTimeConverter.cs",
               "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\ResponseTimeConverter.cs",
               "RelativeToolTip": "TestApp\\ResponseTimeConverter.cs",
-              "ViewState": "AgIAAFEAAAAAAAAAAAAkwMYAAAAqAAAAAAAAAA==",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAcAAAAKAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-03-12T07:46:21.968Z",
               "EditorCaption": ""
@@ -58,8 +54,7 @@
               "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\MainWindow.xaml",
               "RelativeToolTip": "TestApp\\MainWindow.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
-              "WhenOpened": "2026-03-11T10:41:59.671Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-03-11T10:41:59.671Z"
             },
             {
               "$type": "Document",
@@ -71,8 +66,7 @@
               "RelativeToolTip": "TestApp\\MainWindow.xaml.cs",
               "ViewState": "AgIAACYAAAAAAAAAAAAgwDYAAAAtAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-03-11T10:41:58.751Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-03-11T10:41:58.751Z"
             }
           ]
         }
