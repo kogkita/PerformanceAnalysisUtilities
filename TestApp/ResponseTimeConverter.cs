@@ -13,9 +13,7 @@ namespace TestApp
         public int Samples { get; set; }
         public double Average { get; set; }
         public double Median { get; set; }
-        public double P90 { get; set; }
-        public double P80 { get; set; }
-        public double P70 { get; set; }
+        public Dictionary<string, double> Percentiles { get; set; } = new();
         public double Min { get; set; }
         public double Max { get; set; }
         public double ErrorPercent { get; set; }
@@ -25,156 +23,178 @@ namespace TestApp
     {
         public static void Convert(string csvPath, string excelPath)
         {
-            var records = ReadCsv(csvPath);
             ExcelPackage.License.SetNonCommercialPersonal("Response Time Converter");
-          //  ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
+
+            var (records, percentileHeaders) = ReadCsv(csvPath);
 
             using var package = new ExcelPackage();
 
-            var dataSheet = WriteResponseSheet(package, records);
+            var dataSheet = WriteResponseSheet(package, records, percentileHeaders);
 
             if (records.Count > 0)
-                CreateChartSheet(package, dataSheet, records.Count);
+                CreateChartSheet(package, dataSheet, records.Count, percentileHeaders);
 
             package.SaveAs(new FileInfo(excelPath));
         }
 
-        private static List<ResponseTimeRecord> ReadCsv(string csvPath)
+        private static (List<ResponseTimeRecord>, List<string>) ReadCsv(string csvPath)
         {
             var records = new List<ResponseTimeRecord>();
+            var percentileHeaders = new List<string>();
 
             if (!File.Exists(csvPath))
                 throw new FileNotFoundException("CSV file not found", csvPath);
 
             var lines = File.ReadAllLines(csvPath);
+            var headers = lines[0].Split(',');
+
+            int labelIndex = Array.IndexOf(headers, "Label");
+            int sampleIndex = Array.IndexOf(headers, "# Samples");
+            int avgIndex = Array.IndexOf(headers, "Average");
+            int medianIndex = Array.IndexOf(headers, "Median");
+            int minIndex = Array.IndexOf(headers, "Min");
+            int maxIndex = Array.IndexOf(headers, "Max");
+            int errIndex = Array.IndexOf(headers, "Error %");
+
+            var percentileIndexes = new List<int>();
+
+            for (int i = 0; i < headers.Length; i++)
+            {
+                if (headers[i].Contains("% Line"))
+                {
+                    percentileIndexes.Add(i);
+                    percentileHeaders.Add(headers[i]);
+                }
+            }
 
             for (int i = 1; i < lines.Length; i++)
             {
                 var values = lines[i].Split(',');
 
-                if (values.Length < 10)
+                if (values[labelIndex].Trim().Equals("TOTAL", StringComparison.OrdinalIgnoreCase))
                     continue;
 
-                if (values[0].Trim().Equals("TOTAL", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                records.Add(new ResponseTimeRecord
+                var record = new ResponseTimeRecord
                 {
-                    TransactionName = values[0],
-                    Samples = ParseInt(values[1]),
-                    Average = ToSeconds(values[2]),
-                    Median = ToSeconds(values[3]),
-                    P90 = ToSeconds(values[4]),
-                    P80 = ToSeconds(values[5]),
-                    P70 = ToSeconds(values[6]),
-                    Min = ToSeconds(values[7]),
-                    Max = ToSeconds(values[8]),
-                    ErrorPercent = ParsePercent(values[9])
-                });
+                    TransactionName = values[labelIndex],
+                    Samples = ParseInt(values[sampleIndex]),
+                    Average = ToSeconds(values[avgIndex]),
+                    Median = ToSeconds(values[medianIndex]),
+                    Min = ToSeconds(values[minIndex]),
+                    Max = ToSeconds(values[maxIndex]),
+                    ErrorPercent = ParsePercent(values[errIndex])
+                };
+
+                foreach (var idx in percentileIndexes)
+                {
+                    record.Percentiles[headers[idx]] = ToSeconds(values[idx]);
+                }
+
+                records.Add(record);
             }
 
-            return records;
+            return (records, percentileHeaders);
         }
 
         private static int ParseInt(string value)
         {
-            if (int.TryParse(value, out int result))
-                return result;
-
-            return 0;
+            return int.TryParse(value, out int result) ? result : 0;
         }
 
         private static double ParsePercent(string value)
         {
             value = value.Replace("%", "");
-
-            if (double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double result))
-                return result;
-
-            return 0;
+            return double.TryParse(value, NumberStyles.Any, CultureInfo.InvariantCulture, out double result) ? result : 0;
         }
 
         private static double ToSeconds(string ms)
         {
-            if (double.TryParse(ms, NumberStyles.Any, CultureInfo.InvariantCulture, out double value))
-                return value / 1000;
-
-            return 0;
+            return double.TryParse(ms, NumberStyles.Any, CultureInfo.InvariantCulture, out double value)
+                ? value / 1000
+                : 0;
         }
 
-        private static ExcelWorksheet WriteResponseSheet(ExcelPackage package, List<ResponseTimeRecord> records)
+        private static ExcelWorksheet WriteResponseSheet(
+            ExcelPackage package,
+            List<ResponseTimeRecord> records,
+            List<string> percentileHeaders)
         {
             var sheet = package.Workbook.Worksheets.Add("Response Times");
 
-            string[] headers =
-            {
-                "Transaction Name",
-                "# Samples",
-                "Average (Seconds)",
-                "Median (Seconds)",
-                "90th Percentile (Seconds)",
-                "80th Percentile (Seconds)",
-                "70th Percentile (Seconds)",
-                "Min (Seconds)",
-                "Max (Seconds)",
-                "Error %"
-            };
+            int col = 1;
 
-            for (int i = 0; i < headers.Length; i++)
+            sheet.Cells[1, col++].Value = "Transaction Name";
+            sheet.Cells[1, col++].Value = "# Samples";
+            sheet.Cells[1, col++].Value = "Average (Seconds)";
+            sheet.Cells[1, col++].Value = "Median (Seconds)";
+
+            foreach (var p in percentileHeaders)
             {
-                sheet.Cells[1, i + 1].Value = headers[i];
-                sheet.Cells[1, i + 1].Style.Font.Bold = true;
-                sheet.Cells[1, i + 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                sheet.Cells[1, i + 1].Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+                sheet.Cells[1, col++].Value = p.Replace("% Line", " Percentile (Seconds)");
+            }
+
+            sheet.Cells[1, col++].Value = "Min (Seconds)";
+            sheet.Cells[1, col++].Value = "Max (Seconds)";
+            sheet.Cells[1, col++].Value = "Error %";
+
+            using (var range = sheet.Cells[1, 1, 1, col - 1])
+            {
+                range.Style.Font.Bold = true;
+                range.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                range.Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
             }
 
             int row = 2;
 
             foreach (var r in records)
             {
-                sheet.Cells[row, 1].Value = r.TransactionName;
-                sheet.Cells[row, 2].Value = r.Samples;
-                sheet.Cells[row, 3].Value = r.Average;
-                sheet.Cells[row, 4].Value = r.Median;
-                sheet.Cells[row, 5].Value = r.P90;
-                sheet.Cells[row, 6].Value = r.P80;
-                sheet.Cells[row, 7].Value = r.P70;
-                sheet.Cells[row, 8].Value = r.Min;
-                sheet.Cells[row, 9].Value = r.Max;
-                sheet.Cells[row, 10].Value = r.ErrorPercent;
+                col = 1;
+
+                sheet.Cells[row, col++].Value = r.TransactionName;
+                sheet.Cells[row, col++].Value = r.Samples;
+                sheet.Cells[row, col++].Value = r.Average;
+                sheet.Cells[row, col++].Value = r.Median;
+
+                foreach (var p in percentileHeaders)
+                {
+                    sheet.Cells[row, col++].Value = r.Percentiles[p];
+                }
+
+                sheet.Cells[row, col++].Value = r.Min;
+                sheet.Cells[row, col++].Value = r.Max;
+                sheet.Cells[row, col++].Value = r.ErrorPercent;
 
                 row++;
             }
 
             sheet.Cells.AutoFitColumns();
-
             return sheet;
         }
 
-        private static void CreateChartSheet(ExcelPackage package, ExcelWorksheet dataSheet, int recordCount)
+        private static void CreateChartSheet(
+            ExcelPackage package,
+            ExcelWorksheet dataSheet,
+            int recordCount,
+            List<string> percentileHeaders)
         {
             var chartSheet = package.Workbook.Worksheets.Add("Latency Charts");
-
             var chart = chartSheet.Drawings.AddChart("LatencyChart", eChartType.ColumnClustered);
 
             chart.Title.Text = "Latency Percentile Comparison";
 
             int lastRow = recordCount + 1;
+            int percentileStartColumn = 5;
 
-            var p90 = chart.Series.Add(
-                dataSheet.Cells[2, 5, lastRow, 5],
-                dataSheet.Cells[2, 1, lastRow, 1]);
-            p90.Header = "P90";
+            for (int i = 0; i < percentileHeaders.Count; i++)
+            {
+                int col = percentileStartColumn + i;
 
-            var p80 = chart.Series.Add(
-                dataSheet.Cells[2, 6, lastRow, 6],
-                dataSheet.Cells[2, 1, lastRow, 1]);
-            p80.Header = "P80";
+                var series = chart.Series.Add(
+                    dataSheet.Cells[2, col, lastRow, col],
+                    dataSheet.Cells[2, 1, lastRow, 1]);
 
-            var p70 = chart.Series.Add(
-                dataSheet.Cells[2, 7, lastRow, 7],
-                dataSheet.Cells[2, 1, lastRow, 1]);
-            p70.Header = "P70";
+                series.Header = percentileHeaders[i].Replace("% Line", "");
+            }
 
             chart.SetPosition(1, 0, 1, 0);
             chart.SetSize(900, 500);
