@@ -1,8 +1,6 @@
 using OfficeOpenXml;
 using OfficeOpenXml.Drawing.Chart;
 using OfficeOpenXml.Style;
-using System;
-using System.Collections.Generic;
 using System.Drawing;
 using System.Globalization;
 using System.IO;
@@ -28,8 +26,8 @@ namespace TestApp
         public static void Convert(string csvPath, string excelPath)
         {
             var records = ReadCsv(csvPath);
-
-            ExcelPackage.LicenseContext = OfficeOpenXml.LicenseContext.NonCommercial;
+            ExcelPackage.License.SetNonCommercialPersonal("Response Time Converter");
+          //  ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
 
             using var package = new ExcelPackage();
 
