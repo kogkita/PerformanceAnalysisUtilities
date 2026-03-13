@@ -212,10 +212,11 @@ namespace TestApp
             }
 
             bool club = ClubOutputCheckbox.IsChecked == true;
+            bool includeCharts = IncludeChartsCheckbox.IsChecked == true;
 
             if (club)
             {
-                RunConvertClubbed();
+                RunConvertClubbed(includeCharts);
             }
             else
             {
@@ -227,7 +228,7 @@ namespace TestApp
                     try
                     {
                         var output = Path.ChangeExtension(csvPath, ".xlsx");
-                        ResponseTimeConverter.Convert(csvPath, output);
+                        ResponseTimeConverter.Convert(csvPath, output, includeCharts);
                         succeeded++;
                     }
                     catch (Exception ex)
@@ -240,9 +241,8 @@ namespace TestApp
             }
         }
 
-        private void RunConvertClubbed()
+        private void RunConvertClubbed(bool includeCharts)
         {
-            // Ask where to save the combined workbook
             var dlg = new SaveFileDialog
             {
                 Title = "Save Combined Excel Workbook",
@@ -262,7 +262,7 @@ namespace TestApp
                 try
                 {
                     string prefix = SanitizeSheetName(Path.GetFileNameWithoutExtension(csvPath), 20);
-                    ResponseTimeConverter.AppendToPackage(package, csvPath, prefix);
+                    ResponseTimeConverter.AppendToPackage(package, csvPath, prefix, includeCharts);
                     succeeded++;
                 }
                 catch (Exception ex)
@@ -399,76 +399,14 @@ namespace TestApp
 
         private void JTLRunProcessing_Click(object sender, RoutedEventArgs e)
         {
-            if (jtlSelectedFiles.Count == 0)
-            {
-                MessageBox.Show("Please select or drop one or more JTL files first.",
-                    "No Files", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            bool club = JTLClubOutputCheckbox.IsChecked == true;
-
-            if (club)
-            {
-                RunJTLClubbed();
-            }
-            else
-            {
-                int succeeded = 0;
-                var errors = new List<string>();
-
-                foreach (var jtlPath in jtlSelectedFiles)
-                {
-                    try
-                    {
-                        var output = Path.ChangeExtension(jtlPath, ".xlsx");
-                        JTLFileProcessing.Process(jtlPath, output);
-                        succeeded++;
-                    }
-                    catch (Exception ex)
-                    {
-                        errors.Add($"{Path.GetFileName(jtlPath)}: {ex.Message}");
-                    }
-                }
-
-                ShowResult(succeeded, errors);
-            }
+            MessageBox.Show("JTL File Processing is not yet implemented.",
+                "Coming Soon", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         private void RunJTLClubbed()
         {
-            var dlg = new SaveFileDialog
-            {
-                Title = "Save Combined Excel Workbook",
-                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
-                FileName = "JTL_Combined.xlsx"
-            };
-            if (dlg.ShowDialog() != true) return;
-
-            var errors = new List<string>();
-            int succeeded = 0;
-
-            ExcelPackage.License.SetNonCommercialPersonal("JTL File Processing");
-            using var package = new ExcelPackage();
-
-            foreach (var jtlPath in jtlSelectedFiles)
-            {
-                try
-                {
-                    string prefix = SanitizeSheetName(Path.GetFileNameWithoutExtension(jtlPath), 20);
-                    JTLFileProcessing.AppendToPackage(package, jtlPath, prefix);
-                    succeeded++;
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"{Path.GetFileName(jtlPath)}: {ex.Message}");
-                }
-            }
-
-            if (succeeded > 0)
-                package.SaveAs(new FileInfo(dlg.FileName));
-
-            ShowResult(succeeded, errors, dlg.FileName);
+            MessageBox.Show("JTL File Processing is not yet implemented.",
+                "Coming Soon", MessageBoxButton.OK, MessageBoxImage.Information);
         }
 
         // ── Shared helpers ───────────────────────────────────

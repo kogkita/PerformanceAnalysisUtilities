@@ -425,41 +425,66 @@
                             </Border>
 
                             <!-- Run button row -->
+                            <!-- Run button row -->
                             <Grid Grid.Row="4" Margin="0,16,0,0">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
                                 <Button Grid.Column="0"
-                                        Content="Run Processing"
-                                        Style="{StaticResource ActionButtonStyle}"
-                                        Background="#16A34A"
-                                        Foreground="White"
-                                        FontSize="14"
-                                        FontWeight="SemiBold"
-                                        Width="180"
-                                        Height="42"
-                                        Click="RunProcessing_Click"/>
+            Content="Run Processing"
+            Style="{StaticResource ActionButtonStyle}"
+            Background="#16A34A"
+            Foreground="White"
+            FontSize="14"
+            FontWeight="SemiBold"
+            Width="180"
+            Height="42"
+            Click="RunProcessing_Click"/>
+
+                                <!-- Include Charts checkbox -->
+                                <Border Grid.Column="1"
+            Background="#161B2A"
+            BorderBrush="#252D42"
+            BorderThickness="1"
+            CornerRadius="6"
+            Height="42"
+            Margin="12,0,0,0"
+            Padding="14,0">
+                                    <CheckBox x:Name="IncludeChartsCheckbox"
+                  IsChecked="False"
+                  VerticalAlignment="Center"
+                  Foreground="#8B93A5"
+                  FontSize="12.5"
+                  FontFamily="Segoe UI Variable, Segoe UI"
+                  Cursor="Hand">
+                                        <TextBlock>
+                <Run Text="Include Charts" Foreground="#8B93A5"/>
+                <Run Text="  —  add latency chart sheet to output" Foreground="#3D4560" FontSize="11.5"/>
+                                        </TextBlock>
+                                    </CheckBox>
+                                </Border>
 
                                 <!-- Club into one file checkbox -->
-                                <Border Grid.Column="1"
-                                        Background="#161B2A"
-                                        BorderBrush="#252D42"
-                                        BorderThickness="1"
-                                        CornerRadius="6"
-                                        Height="42"
-                                        Margin="12,0,0,0"
-                                        Padding="14,0">
+                                <Border Grid.Column="2"
+                                  Background="#161B2A"
+            BorderBrush="#252D42"
+            BorderThickness="1"
+            CornerRadius="6"
+            Height="42"
+            Margin="12,0,0,0"
+            Padding="14,0">
                                     <CheckBox x:Name="ClubOutputCheckbox"
-                                              VerticalAlignment="Center"
-                                              Foreground="#8B93A5"
-                                              FontSize="12.5"
-                                              FontFamily="Segoe UI Variable, Segoe UI"
-                                              Cursor="Hand">
+                  VerticalAlignment="Center"
+                  Foreground="#8B93A5"
+                  FontSize="12.5"
+                  FontFamily="Segoe UI Variable, Segoe UI"
+                  Cursor="Hand">
                                         <TextBlock>
-                                            <Run Text="Club into one file" Foreground="#8B93A5"/>
-                                            <Run Text="  —  all inputs merged into a single Excel workbook" Foreground="#3D4560" FontSize="11.5"/>
+                <Run Text="Club into one file" Foreground="#8B93A5"/>
+                <Run Text="  —  all inputs merged into a single Excel workbook" Foreground="#3D4560" FontSize="11.5"/>
                                         </TextBlock>
                                     </CheckBox>
                                 </Border>
@@ -589,41 +614,66 @@
                             </Border>
 
                             <!-- Run button row -->
+                            <!-- Run button row -->
                             <Grid Grid.Row="4" Margin="0,16,0,0">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                 </Grid.ColumnDefinitions>
 
                                 <Button Grid.Column="0"
-                                        Content="Run Processing"
-                                        Style="{StaticResource ActionButtonStyle}"
-                                        Background="#16A34A"
-                                        Foreground="White"
-                                        FontSize="14"
-                                        FontWeight="SemiBold"
-                                        Width="180"
-                                        Height="42"
-                                        Click="JTLRunProcessing_Click"/>
+            Content="Run Processing"
+            Style="{StaticResource ActionButtonStyle}"
+            Background="#16A34A"
+            Foreground="White"
+            FontSize="14"
+            FontWeight="SemiBold"
+            Width="180"
+            Height="42"
+            Click="RunProcessing_Click"/>
+
+                                <!-- Include Charts checkbox -->
+                                <Border Grid.Column="1"
+            Background="#161B2A"
+            BorderBrush="#252D42"
+            BorderThickness="1"
+            CornerRadius="6"
+            Height="42"
+            Margin="12,0,0,0"
+            Padding="14,0">
+                                    <CheckBox x:Name="JTLIncludeChartsCheckbox"
+                  IsChecked="False"
+                  VerticalAlignment="Center"
+                  Foreground="#8B93A5"
+                  FontSize="12.5"
+                  FontFamily="Segoe UI Variable, Segoe UI"
+                  Cursor="Hand">
+                                        <TextBlock>
+                <Run Text="Include Charts" Foreground="#8B93A5"/>
+                <Run Text="  —  add latency chart sheet to output" Foreground="#3D4560" FontSize="11.5"/>
+                                        </TextBlock>
+                                    </CheckBox>
+                                </Border>
 
                                 <!-- Club into one file checkbox -->
-                                <Border Grid.Column="1"
-                                        Background="#161B2A"
-                                        BorderBrush="#252D42"
-                                        BorderThickness="1"
-                                        CornerRadius="6"
-                                        Height="42"
-                                        Margin="12,0,0,0"
-                                        Padding="14,0">
+                                <Border Grid.Column="2"
+            Background="#161B2A"
+            BorderBrush="#252D42"
+            BorderThickness="1"
+            CornerRadius="6"
+            Height="42"
+            Margin="12,0,0,0"
+            Padding="14,0">
                                     <CheckBox x:Name="JTLClubOutputCheckbox"
-                                              VerticalAlignment="Center"
-                                              Foreground="#8B93A5"
-                                              FontSize="12.5"
-                                              FontFamily="Segoe UI Variable, Segoe UI"
-                                              Cursor="Hand">
+                  VerticalAlignment="Center"
+                  Foreground="#8B93A5"
+                  FontSize="12.5"
+                  FontFamily="Segoe UI Variable, Segoe UI"
+                  Cursor="Hand">
                                         <TextBlock>
-                                            <Run Text="Club into one file" Foreground="#8B93A5"/>
-                                            <Run Text="  —  all inputs merged into a single Excel workbook" Foreground="#3D4560" FontSize="11.5"/>
+                <Run Text="Club into one file" Foreground="#8B93A5"/>
+                <Run Text="  —  all inputs merged into a single Excel workbook" Foreground="#3D4560" FontSize="11.5"/>
                                         </TextBlock>
                                     </CheckBox>
                                 </Border>
