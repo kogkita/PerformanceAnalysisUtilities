@@ -1,4 +1,5 @@
 ﻿using Microsoft.Win32;
+using OfficeOpenXml;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -210,15 +211,58 @@ namespace TestApp
                 return;
             }
 
-            int succeeded = 0;
+            bool club = ClubOutputCheckbox.IsChecked == true;
+
+            if (club)
+            {
+                RunConvertClubbed();
+            }
+            else
+            {
+                int succeeded = 0;
+                var errors = new List<string>();
+
+                foreach (var csvPath in selectedFiles)
+                {
+                    try
+                    {
+                        var output = Path.ChangeExtension(csvPath, ".xlsx");
+                        ResponseTimeConverter.Convert(csvPath, output);
+                        succeeded++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"{Path.GetFileName(csvPath)}: {ex.Message}");
+                    }
+                }
+
+                ShowResult(succeeded, errors);
+            }
+        }
+
+        private void RunConvertClubbed()
+        {
+            // Ask where to save the combined workbook
+            var dlg = new SaveFileDialog
+            {
+                Title = "Save Combined Excel Workbook",
+                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                FileName = "ResponseTimes_Combined.xlsx"
+            };
+            if (dlg.ShowDialog() != true) return;
+
             var errors = new List<string>();
+            int succeeded = 0;
+
+            ExcelPackage.License.SetNonCommercialPersonal("Response Time Converter");
+            using var package = new ExcelPackage();
 
             foreach (var csvPath in selectedFiles)
             {
                 try
                 {
-                    var output = Path.ChangeExtension(csvPath, ".xlsx");
-                    ResponseTimeConverter.Convert(csvPath, output);
+                    string prefix = SanitizeSheetName(Path.GetFileNameWithoutExtension(csvPath), 20);
+                    ResponseTimeConverter.AppendToPackage(package, csvPath, prefix);
                     succeeded++;
                 }
                 catch (Exception ex)
@@ -227,20 +271,10 @@ namespace TestApp
                 }
             }
 
-            if (errors.Count == 0)
-            {
-                string msg = succeeded == 1
-                    ? "Excel file created successfully."
-                    : $"{succeeded} Excel files created successfully.";
-                MessageBox.Show(msg, "Done", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
-            else
-            {
-                string msg = succeeded > 0
-                    ? $"{succeeded} file(s) converted. {errors.Count} failed:\n\n{string.Join("\n", errors)}"
-                    : $"All conversions failed:\n\n{string.Join("\n", errors)}";
-                MessageBox.Show(msg, "Completed with Errors", MessageBoxButton.OK, MessageBoxImage.Warning);
-            }
+            if (succeeded > 0)
+                package.SaveAs(new FileInfo(dlg.FileName));
+
+            ShowResult(succeeded, errors, dlg.FileName);
         }
         // ── JTL File Processing page ─────────────────────────
 
@@ -372,15 +406,57 @@ namespace TestApp
                 return;
             }
 
-            int succeeded = 0;
+            bool club = JTLClubOutputCheckbox.IsChecked == true;
+
+            if (club)
+            {
+                RunJTLClubbed();
+            }
+            else
+            {
+                int succeeded = 0;
+                var errors = new List<string>();
+
+                foreach (var jtlPath in jtlSelectedFiles)
+                {
+                    try
+                    {
+                        var output = Path.ChangeExtension(jtlPath, ".xlsx");
+                        JTLFileProcessing.Process(jtlPath, output);
+                        succeeded++;
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"{Path.GetFileName(jtlPath)}: {ex.Message}");
+                    }
+                }
+
+                ShowResult(succeeded, errors);
+            }
+        }
+
+        private void RunJTLClubbed()
+        {
+            var dlg = new SaveFileDialog
+            {
+                Title = "Save Combined Excel Workbook",
+                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                FileName = "JTL_Combined.xlsx"
+            };
+            if (dlg.ShowDialog() != true) return;
+
             var errors = new List<string>();
+            int succeeded = 0;
+
+            ExcelPackage.License.SetNonCommercialPersonal("JTL File Processing");
+            using var package = new ExcelPackage();
 
             foreach (var jtlPath in jtlSelectedFiles)
             {
                 try
                 {
-                    var output = Path.ChangeExtension(jtlPath, ".xlsx");
-                    JTLFileProcessing.Process(jtlPath, output);
+                    string prefix = SanitizeSheetName(Path.GetFileNameWithoutExtension(jtlPath), 20);
+                    JTLFileProcessing.AppendToPackage(package, jtlPath, prefix);
                     succeeded++;
                 }
                 catch (Exception ex)
@@ -389,11 +465,30 @@ namespace TestApp
                 }
             }
 
+            if (succeeded > 0)
+                package.SaveAs(new FileInfo(dlg.FileName));
+
+            ShowResult(succeeded, errors, dlg.FileName);
+        }
+
+        // ── Shared helpers ───────────────────────────────────
+
+        private static string SanitizeSheetName(string name, int maxLen)
+        {
+            var invalid = new[] { ':', '\\', '/', '?', '*', '[', ']' };
+            foreach (var c in invalid) name = name.Replace(c, '_');
+            return name.Length > maxLen ? name[..maxLen] : name;
+        }
+
+        private static void ShowResult(int succeeded, List<string> errors, string? savedPath = null)
+        {
             if (errors.Count == 0)
             {
-                string msg = succeeded == 1
-                    ? "Excel file created successfully."
-                    : $"{succeeded} Excel files created successfully.";
+                string msg = savedPath != null
+                    ? $"Combined workbook saved to:\n{savedPath}"
+                    : succeeded == 1
+                        ? "Excel file created successfully."
+                        : $"{succeeded} Excel files created successfully.";
                 MessageBox.Show(msg, "Done", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else

@@ -48,7 +48,17 @@ namespace TestApp
         public static void Process(string jtlPath, string excelPath)
         {
             ExcelPackage.License.SetNonCommercialPersonal("JTL File Processing");
+            using var package = new ExcelPackage();
+            AppendToPackage(package, jtlPath, prefix: null);
+            package.SaveAs(new FileInfo(excelPath));
+        }
 
+        /// <summary>
+        /// Appends sheets for one JTL file into an existing package.
+        /// When <paramref name="prefix"/> is non-null the sheet names are prefixed for clubbed mode.
+        /// </summary>
+        public static void AppendToPackage(ExcelPackage package, string jtlPath, string? prefix)
+        {
             var records = ReadJtl(jtlPath);
 
             if (records.Count == 0)
@@ -56,15 +66,29 @@ namespace TestApp
 
             var summaries = BuildSummaries(records);
 
-            using var package = new ExcelPackage();
+            string rawName = prefix != null ? $"{prefix} – Raw Data" : "Raw Data";
+            string summaryName = prefix != null ? $"{prefix} – Summary" : "Summary";
+            string chartName = prefix != null ? $"{prefix} – Latency Charts" : "Latency Charts";
 
-            var rawSheet = WriteRawSheet(package, records);
-            var summarySheet = WriteSummarySheet(package, summaries);
+            rawName = UniqueSheetName(package, rawName);
+            summaryName = UniqueSheetName(package, summaryName);
+            chartName = UniqueSheetName(package, chartName);
+
+            WriteRawSheet(package, records, rawName);
+            var summarySheet = WriteSummarySheet(package, summaries, summaryName);
 
             if (summaries.Count > 0)
-                CreateChartSheet(package, summarySheet, summaries.Count);
+                CreateChartSheet(package, summarySheet, summaries, chartName);
+        }
 
-            package.SaveAs(new FileInfo(excelPath));
+        private static string UniqueSheetName(ExcelPackage pkg, string name)
+        {
+            if (name.Length > 31) name = name[..31];
+            string candidate = name;
+            int n = 2;
+            while (pkg.Workbook.Worksheets.Any(ws => ws.Name.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+                candidate = $"{name[..Math.Min(name.Length, 28)]} {n++}";
+            return candidate;
         }
 
         // ── Readers ──────────────────────────────────────────────────────────
@@ -236,9 +260,9 @@ namespace TestApp
 
         // ── Excel sheets ─────────────────────────────────────────────────────
 
-        private static ExcelWorksheet WriteRawSheet(ExcelPackage package, List<JTLRecord> records)
+        private static ExcelWorksheet WriteRawSheet(ExcelPackage package, List<JTLRecord> records, string sheetName = "Raw Data")
         {
-            var sheet = package.Workbook.Worksheets.Add("Raw Data");
+            var sheet = package.Workbook.Worksheets.Add(sheetName);
 
             string[] headers =
             [
@@ -293,9 +317,9 @@ namespace TestApp
             return sheet;
         }
 
-        private static ExcelWorksheet WriteSummarySheet(ExcelPackage package, List<JTLSummary> summaries)
+        private static ExcelWorksheet WriteSummarySheet(ExcelPackage package, List<JTLSummary> summaries, string sheetName = "Summary")
         {
-            var sheet = package.Workbook.Worksheets.Add("Summary");
+            var sheet = package.Workbook.Worksheets.Add(sheetName);
 
             string[] headers =
             [
@@ -348,22 +372,31 @@ namespace TestApp
             }
 
             sheet.Cells.AutoFitColumns();
+
+            // Wrap data in an Excel Table so sort order is reflected in the chart
+            int totalRows = summaries.Count + 1;
+            var tableRange = sheet.Cells[1, 1, totalRows, 12];
+            var table = sheet.Tables.Add(tableRange, UniqueTableName(package, "JTLSummary"));
+            table.ShowHeader = true;
+            table.TableStyle = OfficeOpenXml.Table.TableStyles.Medium2;
+
             return sheet;
         }
 
         private static void CreateChartSheet(
             ExcelPackage package,
             ExcelWorksheet summarySheet,
-            int recordCount)
+            List<JTLSummary> summaries,
+            string sheetName = "Latency Charts")
         {
-            var chartSheet = package.Workbook.Worksheets.Add("Latency Charts");
-            var chart = chartSheet.Drawings.AddChart("JTLLatencyChart", eChartType.ColumnClustered);
+            var chartSheet = package.Workbook.Worksheets.Add(sheetName);
 
+            var chart = chartSheet.Drawings.AddChart("JTLLatencyChart", eChartType.BarClustered);
             chart.Title.Text = "Latency Percentile Comparison";
 
+            int recordCount = summaries.Count;
             int lastRow = recordCount + 1;
 
-            // Average, 90th, 95th, 99th percentile columns (3, 5, 6, 7)
             var seriesDefs = new (int col, string label)[]
             {
                 (3, "Average"),
@@ -380,8 +413,109 @@ namespace TestApp
                 series.Header = label;
             }
 
+            // Compute outlier-resistant axis max
+            // Collect percentile values in seconds (matching what's written to the sheet)
+            var allValues = summaries
+                .SelectMany(s => new[] { s.P90Ms / 1000.0, s.P95Ms / 1000.0, s.P99Ms / 1000.0 })
+                .Where(v => v > 0)
+                .OrderBy(v => v)
+                .ToList();
+
+            double? axisMax = null;
+            if (allValues.Count > 0)
+            {
+                double p75 = allValues[(int)(allValues.Count * 0.75)];
+                double hardMax = allValues[^1];
+                if (hardMax > p75 * 3)
+                    axisMax = Math.Ceiling(p75 * 1.5 * 10) / 10;
+            }
+
+            int chartHeight = Math.Max(500, recordCount * 40 + 100);
             chart.SetPosition(1, 0, 1, 0);
-            chart.SetSize(900, 500);
+            chart.SetSize(900, chartHeight);
+
+            FixBarChartAxisOrientation(chart, axisMax);
+        }
+
+        /// <summary>
+        /// Directly patches the chart XML to produce a horizontal bar chart where:
+        ///   - Category axis (transaction names) runs top-to-bottom (row 1 at top)
+        ///   - Value axis (numbers) runs left-to-right with 0 on the left
+        /// EPPlus's built-in Orientation/Crosses properties do not write the correct
+        /// OOXML combination reliably, so we write the nodes ourselves.
+        /// </summary>
+        private static void FixBarChartAxisOrientation(ExcelChart chart, double? axisMax = null)
+        {
+            var xml = chart.ChartXml;
+            var ns = new System.Xml.XmlNamespaceManager(xml.NameTable);
+            ns.AddNamespace("c", "http://schemas.openxmlformats.org/drawingml/2006/chart");
+
+            // Category axis: reverse order top-to-bottom, value axis line at bottom,
+            // labels on the LEFT ("low" = opposite end from where axis crosses at "max")
+            var catAx = xml.SelectSingleNode("//c:catAx", ns);
+            if (catAx != null)
+            {
+                SetOrCreateChildVal(xml, ns, catAx, "c:scaling/c:orientation", "maxMin");
+                SetOrCreateChildVal(xml, ns, catAx, "c:crosses", "max");
+                SetOrCreateChildVal(xml, ns, catAx, "c:tickLblPos", "low");
+            }
+
+            // Value axis: orientation normal left-to-right (0 on left, bars grow right).
+            // crossesAt=0 → category axis line sits at value 0 (left edge).
+            // tickLblPos=low → numbers at the bottom.
+            var valAx = xml.SelectSingleNode("//c:valAx", ns);
+            if (valAx != null)
+            {
+                SetOrCreateChildVal(xml, ns, valAx, "c:scaling/c:orientation", "minMax");
+                if (axisMax.HasValue)
+                    SetOrCreateChildVal(xml, ns, valAx, "c:scaling/c:max", axisMax.Value.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
+                SetOrCreateChildVal(xml, ns, valAx, "c:crossesAt", "0");
+                SetOrCreateChildVal(xml, ns, valAx, "c:tickLblPos", "low");
+            }
+        }
+
+        private static void SetOrCreateChildVal(
+            System.Xml.XmlDocument xml,
+            System.Xml.XmlNamespaceManager ns,
+            System.Xml.XmlNode parent,
+            string relPath,
+            string val)
+        {
+            const string chartNs = "http://schemas.openxmlformats.org/drawingml/2006/chart";
+            var parts = relPath.Split('/');
+            var node = parent;
+
+            foreach (var part in parts)
+            {
+                var child = node.SelectSingleNode(part, ns);
+                if (child == null)
+                {
+                    var localName = part.Contains(':') ? part.Split(':')[1] : part;
+                    child = xml.CreateElement("c", localName, chartNs);
+                    node.AppendChild(child);
+                }
+                node = child;
+            }
+
+            var attr = node.Attributes?["val"];
+            if (attr == null)
+            {
+                attr = xml.CreateAttribute("val");
+                node.Attributes!.Append(attr);
+            }
+            attr.Value = val;
+        }
+
+        private static string UniqueTableName(ExcelPackage pkg, string name)
+        {
+            var existing = pkg.Workbook.Worksheets
+                .SelectMany(ws => ws.Tables.Select(t => t.Name))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+            string candidate = name;
+            int n = 2;
+            while (existing.Contains(candidate))
+                candidate = $"{name}{n++}";
+            return candidate;
         }
 
         // ── Helpers ──────────────────────────────────────────────────────────
