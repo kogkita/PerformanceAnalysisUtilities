@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Performance Test Utilities"
-        Height="560"
-        Width="860"
-        MinHeight="500"
-        MinWidth="740"
+        Height="620"
+        Width="900"
+        MinHeight="540"
+        MinWidth="760"
         Background="Transparent"
         WindowStyle="None"
         AllowsTransparency="True"
@@ -71,6 +71,36 @@
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Bd" Property="Opacity" Value="0.7"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Bd" Property="Opacity" Value="0.4"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Small icon-only remove button for file list rows -->
+        <Style x:Key="RemoveButtonStyle" TargetType="Button">
+            <Setter Property="Width" Value="18"/>
+            <Setter Property="Height" Value="18"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Foreground" Value="#4A5568"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="FontFamily" Value="Segoe MDL2 Assets, Segoe UI"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Bd" Background="{TemplateBinding Background}" CornerRadius="3">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Bd" Property="Background" Value="#3D1F1F"/>
+                                <Setter Property="Foreground" Value="#F87171"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -142,9 +172,7 @@
 
         <Grid>
             <Grid.RowDefinitions>
-                <!-- Custom title bar -->
                 <RowDefinition Height="40"/>
-                <!-- Body -->
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
 
@@ -159,7 +187,6 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
-                    <!-- App name -->
                     <StackPanel Orientation="Horizontal"
                                 VerticalAlignment="Center"
                                 Margin="16,0">
@@ -176,7 +203,6 @@
                                    VerticalAlignment="Center"/>
                     </StackPanel>
 
-                    <!-- Window controls -->
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Stretch">
@@ -255,7 +281,7 @@
                         </StackPanel>
 
                         <TextBlock DockPanel.Dock="Bottom"
-                                   Text="v1.1.0"
+                                   Text="v1.2.0"
                                    FontSize="11"
                                    Foreground="#2D3450"
                                    FontFamily="Segoe UI Variable, Segoe UI"
@@ -273,57 +299,101 @@
                     <Grid x:Name="PageConvert" Visibility="Visible">
                         <Grid Margin="36,28,36,28">
                             <Grid.RowDefinitions>
+                                <!-- Heading -->
                                 <RowDefinition Height="Auto"/>
+                                <!-- Browse row -->
                                 <RowDefinition Height="Auto"/>
+                                <!-- File list -->
+                                <RowDefinition Height="Auto"/>
+                                <!-- Drop zone -->
                                 <RowDefinition Height="*"/>
+                                <!-- Run button -->
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <StackPanel Grid.Row="0" Margin="0,0,0,22">
+                            <!-- Heading -->
+                            <StackPanel Grid.Row="0" Margin="0,0,0,20">
                                 <TextBlock Text="Convert Response Times"
                                            FontSize="21"
                                            FontWeight="SemiBold"
                                            Foreground="#E2E8F0"
                                            FontFamily="Segoe UI Variable, Segoe UI"/>
-                                <TextBlock Text="Import a JMeter CSV report and export a formatted Excel workbook with charts."
+                                <TextBlock Text="Import one or more JMeter CSV reports and export formatted Excel workbooks with charts."
                                            FontSize="12.5"
                                            Foreground="#4A5568"
                                            FontFamily="Segoe UI Variable, Segoe UI"
-                                           Margin="0,5,0,0"/>
+                                           Margin="0,5,0,0"
+                                           TextWrapping="Wrap"/>
                             </StackPanel>
 
-                            <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,14">
-                                <Border Background="#161B2A"
+                            <!-- Browse row -->
+                            <Grid Grid.Row="1" Margin="0,0,0,12">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <!-- File count pill -->
+                                <Border Grid.Column="0"
+                                        Background="#161B2A"
                                         BorderBrush="#252D42"
                                         BorderThickness="1"
                                         CornerRadius="6"
-                                        Width="310"
-                                        Height="40"
-                                        Margin="0,0,10,0">
-                                    <TextBox x:Name="FilePathBox"
-                                             Background="Transparent"
-                                             BorderThickness="0"
-                                             Foreground="#8B93A5"
-                                             FontSize="12"
-                                             FontFamily="Segoe UI Variable, Segoe UI"
-                                             VerticalContentAlignment="Center"
-                                             Padding="12,0"
-                                             IsReadOnly="True"
-                                             Text="No file selected…"/>
+                                        Height="40">
+                                    <TextBlock x:Name="FileCountLabel"
+                                               Text="No files selected"
+                                               Foreground="#8B93A5"
+                                               FontSize="12"
+                                               FontFamily="Segoe UI Variable, Segoe UI"
+                                               VerticalAlignment="Center"
+                                               Padding="12,0"/>
                                 </Border>
 
-                                <Button Content="Browse"
+                                <!-- Browse button -->
+                                <Button Grid.Column="1"
+                                        Content="Browse…"
                                         Style="{StaticResource ActionButtonStyle}"
                                         Background="#2563EB"
                                         Foreground="White"
                                         FontSize="13"
                                         FontWeight="SemiBold"
-                                        Width="88"
+                                        Width="96"
                                         Height="40"
+                                        Margin="10,0,0,0"
                                         Click="BrowseFile_Click"/>
-                            </StackPanel>
 
+                                <!-- Clear All button (hidden when no files) -->
+                                <Button x:Name="ClearAllButton"
+                                        Grid.Column="2"
+                                        Content="Clear All"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        Background="#374151"
+                                        Foreground="#9CA3AF"
+                                        FontSize="12"
+                                        Width="80"
+                                        Height="40"
+                                        Margin="8,0,0,0"
+                                        Visibility="Collapsed"
+                                        Click="ClearAll_Click"/>
+                            </Grid>
+
+                            <!-- Selected file list -->
                             <Border Grid.Row="2"
+                                    Background="#0A0D18"
+                                    BorderBrush="#1A2030"
+                                    BorderThickness="1"
+                                    CornerRadius="8"
+                                    MaxHeight="160"
+                                    Margin="0,0,0,10"
+                                    Padding="4">
+                                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                    <StackPanel x:Name="FileListPanel" Margin="2"/>
+                                </ScrollViewer>
+                            </Border>
+
+                            <!-- Drop zone -->
+                            <Border Grid.Row="3"
                                     x:Name="DropZone"
                                     AllowDrop="True"
                                     Drop="FileDropped"
@@ -339,13 +409,13 @@
                                                HorizontalAlignment="Center"
                                                Margin="0,0,0,10"
                                                Foreground="#2D3A5A"/>
-                                    <TextBlock Text="Drag &amp; drop your CSV file here"
+                                    <TextBlock Text="Drag &amp; drop CSV files here"
                                                FontSize="14"
                                                FontWeight="SemiBold"
                                                Foreground="#3D4D70"
                                                HorizontalAlignment="Center"
                                                FontFamily="Segoe UI Variable, Segoe UI"/>
-                                    <TextBlock Text="Supports JMeter Aggregate Report format"
+                                    <TextBlock Text="Multiple files supported — each gets its own Excel output"
                                                FontSize="11.5"
                                                Foreground="#252D42"
                                                HorizontalAlignment="Center"
@@ -354,7 +424,8 @@
                                 </StackPanel>
                             </Border>
 
-                            <Button Grid.Row="3"
+                            <!-- Run button -->
+                            <Button Grid.Row="4"
                                     Content="Run Processing"
                                     Style="{StaticResource ActionButtonStyle}"
                                     Background="#16A34A"
@@ -364,7 +435,7 @@
                                     Width="180"
                                     Height="42"
                                     HorizontalAlignment="Left"
-                                    Margin="0,18,0,0"
+                                    Margin="0,16,0,0"
                                     Click="RunProcessing_Click"/>
                         </Grid>
                     </Grid>

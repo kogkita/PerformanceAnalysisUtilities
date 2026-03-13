@@ -1,6 +1,8 @@
 ﻿using Microsoft.Win32;
 using System;
+using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -10,7 +12,7 @@ namespace TestApp
 {
     public partial class MainWindow : Window
     {
-        private string selectedFile = "";
+        private readonly List<string> selectedFiles = new();
         private Button? activeNavButton;
 
         public MainWindow()
@@ -43,12 +45,12 @@ namespace TestApp
             if (WindowState == WindowState.Maximized)
             {
                 WindowState = WindowState.Normal;
-                MaxRestoreBtn.Content = "\uE922"; // restore icon
+                MaxRestoreBtn.Content = "\uE922";
             }
             else
             {
                 WindowState = WindowState.Maximized;
-                MaxRestoreBtn.Content = "\uE923"; // maximize icon
+                MaxRestoreBtn.Content = "\uE923";
             }
         }
 
@@ -69,16 +71,101 @@ namespace TestApp
         private void NavConvert_Click(object sender, RoutedEventArgs e)
             => SetActivePage(NavConvert, PageConvert);
 
+        // ── File list helpers ────────────────────────────────
+
+        private void AddFiles(IEnumerable<string> paths)
+        {
+            foreach (var path in paths)
+            {
+                if (path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)
+                    && !selectedFiles.Contains(path))
+                {
+                    selectedFiles.Add(path);
+                }
+            }
+            RefreshFileList();
+        }
+
+        private void RefreshFileList()
+        {
+            FileListPanel.Children.Clear();
+
+            foreach (var path in selectedFiles)
+            {
+                // Row grid
+                var row = new Grid { Margin = new Thickness(4, 2, 4, 2) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                // File path label
+                var label = new TextBlock
+                {
+                    Text = path,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7DD3FC")),
+                    FontSize = 11.5,
+                    FontFamily = new FontFamily("Consolas, Segoe UI Mono, Segoe UI"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    ToolTip = path
+                };
+                Grid.SetColumn(label, 0);
+
+                // Remove button — capture path in closure
+                var capturedPath = path;
+                var removeBtn = new Button
+                {
+                    Width = 18,
+                    Height = 18,
+                    Content = "\uE711",
+                    FontSize = 10,
+                    FontFamily = new FontFamily("Segoe MDL2 Assets, Segoe UI"),
+                    Background = Brushes.Transparent,
+                    BorderThickness = new Thickness(0),
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4A5568")),
+                    Cursor = Cursors.Hand,
+                    ToolTip = "Remove",
+                    Margin = new Thickness(6, 0, 2, 0),
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                removeBtn.Click += (_, _) =>
+                {
+                    selectedFiles.Remove(capturedPath);
+                    RefreshFileList();
+                };
+                Grid.SetColumn(removeBtn, 1);
+
+                row.Children.Add(label);
+                row.Children.Add(removeBtn);
+                FileListPanel.Children.Add(row);
+            }
+
+            int count = selectedFiles.Count;
+            FileCountLabel.Text = count == 0
+                ? "No files selected"
+                : count == 1
+                    ? "1 file selected"
+                    : $"{count} files selected";
+
+            ClearAllButton.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        }
+
         // ── Convert Response Times page ──────────────────────
 
         private void BrowseFile_Click(object sender, RoutedEventArgs e)
         {
-            var dialog = new OpenFileDialog { Filter = "CSV Files (*.csv)|*.csv" };
-            if (dialog.ShowDialog() == true)
+            var dialog = new OpenFileDialog
             {
-                selectedFile = dialog.FileName;
-                FilePathBox.Text = selectedFile;
-            }
+                Filter = "CSV Files (*.csv)|*.csv",
+                Multiselect = true
+            };
+            if (dialog.ShowDialog() == true)
+                AddFiles(dialog.FileNames);
+        }
+
+        private void ClearAll_Click(object sender, RoutedEventArgs e)
+        {
+            selectedFiles.Clear();
+            RefreshFileList();
         }
 
         private void FileDropped(object sender, DragEventArgs e)
@@ -87,11 +174,7 @@ namespace TestApp
             if (e.Data.GetDataPresent(DataFormats.FileDrop))
             {
                 var files = (string[])e.Data.GetData(DataFormats.FileDrop);
-                if (files.Length > 0)
-                {
-                    selectedFile = files[0];
-                    FilePathBox.Text = selectedFile;
-                }
+                AddFiles(files);
             }
         }
 
@@ -115,21 +198,43 @@ namespace TestApp
 
         private void RunProcessing_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrWhiteSpace(selectedFile))
+            if (selectedFiles.Count == 0)
             {
-                MessageBox.Show("Please select or drop a CSV file first.", "No File", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show("Please select or drop one or more CSV files first.",
+                    "No Files", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
-            try
+            int succeeded = 0;
+            var errors = new List<string>();
+
+            foreach (var csvPath in selectedFiles)
             {
-                var output = Path.ChangeExtension(selectedFile, ".xlsx");
-                ResponseTimeConverter.Convert(selectedFile, output);
-                MessageBox.Show($"Excel created:\n{output}", "Done", MessageBoxButton.OK, MessageBoxImage.Information);
+                try
+                {
+                    var output = Path.ChangeExtension(csvPath, ".xlsx");
+                    ResponseTimeConverter.Convert(csvPath, output);
+                    succeeded++;
+                }
+                catch (Exception ex)
+                {
+                    errors.Add($"{Path.GetFileName(csvPath)}: {ex.Message}");
+                }
             }
-            catch (Exception ex)
+
+            if (errors.Count == 0)
             {
-                MessageBox.Show(ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                string msg = succeeded == 1
+                    ? "Excel file created successfully."
+                    : $"{succeeded} Excel files created successfully.";
+                MessageBox.Show(msg, "Done", MessageBoxButton.OK, MessageBoxImage.Information);
+            }
+            else
+            {
+                string msg = succeeded > 0
+                    ? $"{succeeded} file(s) converted. {errors.Count} failed:\n\n{string.Join("\n", errors)}"
+                    : $"All conversions failed:\n\n{string.Join("\n", errors)}";
+                MessageBox.Show(msg, "Completed with Errors", MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
     }
