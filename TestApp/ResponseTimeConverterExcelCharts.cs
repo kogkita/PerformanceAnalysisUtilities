@@ -24,28 +24,37 @@ namespace TestApp
         {
             var chartSheet = package.Workbook.Worksheets.Add(sheetName);
 
-            var chart = chartSheet.Drawings.AddChart("LatencyChart", eChartType.BarClustered);
+            var chart = (ExcelBarChart)chartSheet.Drawings.AddChart("LatencyChart", eChartType.BarClustered);
             chart.Title.Text = "Latency Percentile Comparison";
+            chart.GapWidth = 120;
+            chart.XAxis.MajorUnit = 1;
 
             int recordCount = records.Count;
             int lastRow = recordCount + 1;
 
             // ── Add one series per percentile column ──────────────────────────
             // ── Add Average series (always column 3) ─────────────────────────
-            var avgSeries = chart.Series.Add(
-                dataSheet.Cells[2, 3, lastRow, 3],  // Average column
-                dataSheet.Cells[2, 1, lastRow, 1]); // X labels (transaction names)
+            var avgSeries = (ExcelBarChartSerie)chart.Series.Add(
+            dataSheet.Cells[2, 3, lastRow, 3],
+            dataSheet.Cells[2, 1, lastRow, 1]);
+
             avgSeries.Header = "Average";
+            avgSeries.DataLabel.ShowValue = true;
+            avgSeries.DataLabel.Position = eLabelPosition.OutEnd;
 
             // ── Add 90th percentile series only ──────────────────────────────
             int p90Index = percentileHeaders.IndexOf("90% Line");
             if (p90Index >= 0)
             {
                 int p90Col = percentileStartColumn + p90Index;
-                var p90Series = chart.Series.Add(
-                    dataSheet.Cells[2, p90Col, lastRow, p90Col],  // 90th percentile column
-                    dataSheet.Cells[2, 1, lastRow, 1]);       // X labels (transaction names)
+                var p90Series = (ExcelBarChartSerie)chart.Series.Add(
+                dataSheet.Cells[2, p90Col, lastRow, p90Col],
+                dataSheet.Cells[2, 1, lastRow, 1]);
+
                 p90Series.Header = "90th Percentile";
+                p90Series.DataLabel.ShowValue = true;
+                p90Series.DataLabel.Position = eLabelPosition.OutEnd;
+               
             }
 
             // ── Outlier-resistant axis maximum ────────────────────────────────
@@ -54,7 +63,7 @@ namespace TestApp
             // ── Size and position ─────────────────────────────────────────────
             int chartHeight = Math.Max(500, recordCount * 40 + 100);
             chart.SetPosition(1, 0, 1, 0);
-            chart.SetSize(900, chartHeight);
+            chart.SetSize(1600, chartHeight);
 
             // ── Fix axis orientation via raw XML ──────────────────────────────
             FixBarChartAxisOrientation(chart, axisMax);
@@ -84,7 +93,7 @@ namespace TestApp
                         vals.Add(p90);
                     return vals;
                 })
-                .Where(v => v > 0)
+                .Where(v => v > 0.0001)
                 .OrderBy(v => v)
                 .ToList();
 
@@ -96,7 +105,7 @@ namespace TestApp
 
             // Only cap the axis if the outlier is more than 3× the p75 value
             if (hardMax > p75 * 3)
-                return Math.Ceiling(p75 * 1.5 * 10) / 10; // round up to 1 decimal
+                return Math.Ceiling(p75 * 3 * 10) / 10; // round up to 1 decimal
 
             return null;
         }
@@ -129,7 +138,7 @@ namespace TestApp
             if (catAx != null)
             {
                 SetOrCreateChildVal(xml, ns, catAx, "c:scaling/c:orientation", "maxMin");
-                SetOrCreateChildVal(xml, ns, catAx, "c:crosses", "max");
+                SetOrCreateChildVal(xml, ns, catAx, "c:crosses", "min");
                 SetOrCreateChildVal(xml, ns, catAx, "c:tickLblPos", "low");
             }
 
@@ -140,6 +149,7 @@ namespace TestApp
             var valAx = xml.SelectSingleNode("//c:valAx", ns);
             if (valAx != null)
             {
+                SetOrCreateChildVal(xml, ns, valAx, "c:scaling/c:min", "0");
                 SetOrCreateChildVal(xml, ns, valAx, "c:scaling/c:orientation", "minMax");
 
                 if (axisMax.HasValue)
@@ -148,7 +158,6 @@ namespace TestApp
                         "c:scaling/c:max",
                         axisMax.Value.ToString("G", System.Globalization.CultureInfo.InvariantCulture));
 
-                SetOrCreateChildVal(xml, ns, valAx, "c:crossesAt", "0");
                 SetOrCreateChildVal(xml, ns, valAx, "c:tickLblPos", "low");
             }
         }
