@@ -25,25 +25,8 @@ namespace TestApp
             List<JTLFileProcessingRecord> records,
             string xlsxPath)
         {
-            // ── Read order DIRECTLY from JTL Results sheet ────────────────────
-            // This ensures the chart order always matches whatever order the user
-            // has set on sheet 1 (including manual sorts), not the ParseJtl order.
-            // Col A=Label, C=Avg(s), E=P90(s) — values already in seconds from WriteResultsSheet
-            var orderedRecords = new List<JTLFileProcessingRecord>();
-            for (int row = 2; row <= dataSheet.Dimension.End.Row; row++)
-            {
-                string? name = dataSheet.Cells[row, 1].GetValue<string>();
-                if (string.IsNullOrEmpty(name)) continue;
-                double avgS = dataSheet.Cells[row, 3].GetValue<double>(); // already seconds
-                double p90S = dataSheet.Cells[row, 5].GetValue<double>(); // already seconds
-                orderedRecords.Add(new JTLFileProcessingRecord
-                {
-                    TransactionName = name,
-                    Average = avgS * 1000.0,  // back to ms for BuildMiniChartXml
-                    P90 = p90S * 1000.0,
-                });
-            }
-            int n = orderedRecords.Count;
+            // records is already sorted by avg desc (passed from Convert)
+            int n = records.Count;
 
             // ── Build JTL Charts sheet ────────────────────────────────────────
             var cs = package.Workbook.Worksheets.Add("JTL Charts");
@@ -91,7 +74,7 @@ namespace TestApp
             {
                 int row = 3 + i;
                 cs.Row(row).Height = MiniRowHt;
-                cs.Cells[row, 1].Value = orderedRecords[i].TransactionName;
+                cs.Cells[row, 1].Value = records[i].TransactionName;
                 cs.Cells[row, 1].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
 
                 // Register EPPlus chart shell (indices 1..n = chart2..chartN+1)
@@ -108,7 +91,7 @@ namespace TestApp
             package.SaveAs(new FileInfo(xlsxPath));
 
             // Inject correct chart XML + drawing XML into the saved ZIP
-            InjectAllCharts(xlsxPath, orderedRecords);
+            InjectAllCharts(xlsxPath, records);
         }
 
         public static void InjectChartForSheet(

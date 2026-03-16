@@ -272,7 +272,11 @@ namespace TestApp
             }
 
             if (succeeded > 0)
+            {
                 package.SaveAs(new FileInfo(dlg.FileName));
+                if (includeCharts)
+                    ResponseTimeConverter.InjectPendingCharts(dlg.FileName);
+            }
 
             ShowResult(succeeded, errors, dlg.FileName);
         }

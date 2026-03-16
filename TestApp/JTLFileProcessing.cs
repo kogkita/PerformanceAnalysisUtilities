@@ -39,18 +39,24 @@ namespace TestApp
 
             var records = ParseJtl(jtlPath);
 
-            // If the output file already exists and has a sorted "JTL Results" sheet,
-            // reorder records to match that sort so the user's manual sort is preserved.
-            records = ApplyExistingSortOrder(records, excelPath);
+            // Sheet 1: A-Z by transaction name
+            var recordsAZ = records
+                .OrderBy(r => r.TransactionName, StringComparer.Ordinal)
+                .ToList();
+
+            // Charts: highest average response time first
+            var recordsByAvg = records
+                .OrderByDescending(r => r.Average)
+                .ToList();
 
             using var package = new ExcelPackage();
 
             string dataName = UniqueSheetName(package, "JTL Results");
-            var dataSheet = WriteResultsSheet(package, records, dataName);
+            var dataSheet = WriteResultsSheet(package, recordsAZ, dataName);
 
             if (includeCharts && records.Count > 0)
                 JTLFileProcessingExcelCharts.AddMiniChartsAndSave(
-                    package, dataSheet, records, excelPath);
+                    package, dataSheet, recordsByAvg, excelPath);
             else
                 package.SaveAs(new FileInfo(excelPath));
         }
@@ -61,59 +67,6 @@ namespace TestApp
         /// to match that sheet's row order.  Any records not found in the
         /// existing sheet are appended at the end (new transactions).
         /// </summary>
-        private static List<JTLFileProcessingRecord> ApplyExistingSortOrder(
-            List<JTLFileProcessingRecord> records, string excelPath)
-        {
-            if (!File.Exists(excelPath)) return records;
-
-            try
-            {
-                // Copy to a temp file to avoid any lock conflict with the output path
-                string tmp = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".xlsx");
-                File.Copy(excelPath, tmp, overwrite: true);
-
-                try
-                {
-                    using var existing = new ExcelPackage(new FileInfo(tmp));
-                    var ws = existing.Workbook.Worksheets
-                        .FirstOrDefault(s => s.Name == "JTL Results");
-                    if (ws == null || ws.Dimension == null) return records;
-
-                    var lookup = new Dictionary<string, JTLFileProcessingRecord>(
-                        StringComparer.Ordinal);
-                    foreach (var r in records)
-                        lookup[r.TransactionName] = r;
-
-                    var sorted = new List<JTLFileProcessingRecord>(records.Count);
-                    var seen = new HashSet<string>(StringComparer.Ordinal);
-
-                    for (int row = 2; row <= ws.Dimension.End.Row; row++)
-                    {
-                        string? name = ws.Cells[row, 1].GetValue<string>();
-                        if (string.IsNullOrEmpty(name)) continue;
-                        if (lookup.TryGetValue(name, out var rec) && seen.Add(name))
-                            sorted.Add(rec);
-                    }
-
-                    // Append new transactions not in existing file
-                    foreach (var r in records)
-                        if (seen.Add(r.TransactionName))
-                            sorted.Add(r);
-
-                    // Return sorted if we got at least as many as we started with
-                    return sorted.Count >= records.Count ? sorted : records;
-                }
-                finally
-                {
-                    try { File.Delete(tmp); } catch { }
-                }
-            }
-            catch
-            {
-                return records;
-            }
-        }
-
         /// <summary>
         /// Appends sheets for one JTL file into an existing package.
         /// When <paramref name="prefix"/> is non-null the sheet names are

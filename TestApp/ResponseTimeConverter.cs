@@ -32,16 +32,28 @@ namespace TestApp
         {
             ExcelPackage.License.SetNonCommercialPersonal("Response Time Converter");
 
+            var (records, percentileHeaders) = ReadCsv(csvPath);
+
+            // Sheet 1: A-Z by transaction name
+            var recordsAZ = records
+                .OrderBy(r => r.TransactionName, StringComparer.Ordinal)
+                .ToList();
+
             using var package = new ExcelPackage();
-            AppendToPackage(package, csvPath, prefix: null, includeCharts: includeCharts);
-            package.SaveAs(new FileInfo(excelPath));
+
+            string dataName = UniqueSheetName(package, "Response Times");
+            string chartName = UniqueSheetName(package, "Latency Charts");
+
+            WriteResponseSheet(package, recordsAZ, percentileHeaders, dataName);
+
+            if (includeCharts && records.Count > 0)
+                // AddMiniChartsAndSave sorts by avg desc internally and handles SaveAs
+                ResponseTimeConverterExcelCharts.AddMiniChartsAndSave(
+                    package, records, chartName, excelPath);
+            else
+                package.SaveAs(new FileInfo(excelPath));
         }
 
-        /// <summary>
-        /// Appends sheets for one CSV into an existing package.
-        /// When <paramref name="prefix"/> is non-null the sheet names are
-        /// prefixed for clubbed / multi-file mode.
-        /// </summary>
         public static void AppendToPackage(
             ExcelPackage package,
             string csvPath,
@@ -50,25 +62,54 @@ namespace TestApp
         {
             var (records, percentileHeaders) = ReadCsv(csvPath);
 
-            string dataName = prefix != null ? $"{prefix} – Response Times" : "Response Times";
-            string chartName = prefix != null ? $"{prefix} – Latency Charts" : "Latency Charts";
+            // Sheet A-Z
+            var recordsAZ = records
+                .OrderBy(r => r.TransactionName, StringComparer.Ordinal)
+                .ToList();
+
+            string dataName = prefix != null ? $"{prefix} \u2013 Response Times" : "Response Times";
+            string chartName = prefix != null ? $"{prefix} \u2013 Latency Charts" : "Latency Charts";
 
             dataName = UniqueSheetName(package, dataName);
             chartName = UniqueSheetName(package, chartName);
 
-            var (dataSheet, percentileStartCol) =
-                WriteResponseSheet(package, records, percentileHeaders, dataName);
+            WriteResponseSheet(package, recordsAZ, percentileHeaders, dataName);
 
             if (includeCharts && records.Count > 0)
             {
-                ResponseTimeConverterExcelCharts.CreateChartSheet(
-                    package,
-                    dataSheet,
-                    records,
-                    percentileHeaders,
-                    percentileStartCol,
-                    chartName);
+                // For clubbed mode: register chart shells, store for later injection
+                var byAvg = records.OrderByDescending(r => r.Average).ToList();
+                _pendingCharts[chartName] = (byAvg, package);
+
+                var cs = package.Workbook.Worksheets.Add(chartName);
+                cs.Column(1).Width = 42;
+                for (int i = 0; i < byAvg.Count; i++)
+                {
+                    int row = 3 + i;
+                    var c = (OfficeOpenXml.Drawing.Chart.ExcelBarChart)
+                        cs.Drawings.AddChart($"RC{i}",
+                            OfficeOpenXml.Drawing.Chart.eChartType.BarClustered);
+                    c.SetPosition(row - 1, 0, 1, 0);
+                    c.SetSize(1, 1);
+                }
+                // Also add scale shell
+                var scale = (OfficeOpenXml.Drawing.Chart.ExcelBarChart)
+                    cs.Drawings.AddChart("ScaleAxis",
+                        OfficeOpenXml.Drawing.Chart.eChartType.BarClustered);
+                scale.SetPosition(1, 0, 1, 0);
+                scale.SetSize(1, 1);
             }
+        }
+
+        private static readonly Dictionary<string, (List<ResponseTimeRecord> records, ExcelPackage pkg)>
+            _pendingCharts = new();
+
+        /// <summary>Called by MainWindow after SaveAs in clubbed mode.</summary>
+        public static void InjectPendingCharts(string xlsxPath)
+        {
+            foreach (var kvp in _pendingCharts)
+                ResponseTimeConverterExcelCharts.InjectChartForSheet(xlsxPath, kvp.Key, kvp.Value.records);
+            _pendingCharts.Clear();
         }
 
         // ─────────────────────────────────────────────────────────────────────
@@ -152,14 +193,16 @@ namespace TestApp
             {
                 var values = lines[i].Split(',');
 
-                // Skip the TOTAL summary row
-                if (values[labelIndex].Trim()
-                        .Equals("TOTAL", StringComparison.OrdinalIgnoreCase))
+                // Skip the TOTAL summary row and web request rows (URLs start with /)
+                string label = values[labelIndex].Trim();
+                if (label.Equals("TOTAL", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                if (label.StartsWith("/") || label.StartsWith("http://") || label.StartsWith("https://"))
                     continue;
 
                 var record = new ResponseTimeRecord
                 {
-                    TransactionName = values[labelIndex],
+                    TransactionName = label,
                     Samples = ParseInt(values[sampleIndex]),
                     Average = ToSeconds(values[avgIndex]),
                     Median = ToSeconds(values[medianIndex]),
@@ -205,8 +248,7 @@ namespace TestApp
         // Excel sheet writer
         // ─────────────────────────────────────────────────────────────────────
 
-        private static (ExcelWorksheet sheet, int percentileStartCol)
-            WriteResponseSheet(
+        private static void WriteResponseSheet(
                 ExcelPackage package,
                 List<ResponseTimeRecord> records,
                 List<string> percentileHeaders,
@@ -265,14 +307,12 @@ namespace TestApp
             sheet.Cells.AutoFitColumns();
 
             // ── Wrap in an Excel Table ────────────────────────────────────────
-            int totalRows = records.Count + 1; // header + data rows
+            int totalRows = records.Count + 1;
             int totalCols = col - 1;
             var tableRange = sheet.Cells[1, 1, totalRows, totalCols];
             var table = sheet.Tables.Add(tableRange, UniqueTableName(package, "ResponseTimes"));
             table.ShowHeader = true;
             table.TableStyle = OfficeOpenXml.Table.TableStyles.Medium2;
-
-            return (sheet, percentileStartCol);
         }
     }
 }

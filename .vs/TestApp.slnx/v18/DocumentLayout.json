@@ -3,12 +3,12 @@
   "WorkspaceRootPath": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\jtlfileprocessing.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\jtlfileprocessing.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\responsetimeconverter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\responsetimeconverter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
-      "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\jtlfileprocessingexcelcharts.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
-      "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\jtlfileprocessingexcelcharts.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+      "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\responsetimeconverterexcelcharts.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\responsetimeconverterexcelcharts.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\mainwindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
@@ -17,6 +17,14 @@
     {
       "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}",
       "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\mainwindow.xaml||{F11ACC28-31D1-4C80-A34B-F4E09D3D753C}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\jtlfileprocessingexcelcharts.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\jtlfileprocessingexcelcharts.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\jtlfileprocessing.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\jtlfileprocessing.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     }
   ],
   "DocumentGroupContainers": [
@@ -30,33 +38,36 @@
           "Children": [
             {
               "$type": "Bookmark",
-              "Name": "ST:0:0:{cce594b6-0c39-4442-ba28-10c64ac7e89f}"
+              "Name": "ST:0:0:{3ae79031-e1bc-11d0-8f78-00a0c9110057}"
+            },
+            {
+              "$type": "Bookmark",
+              "Name": "ST:0:0:{d78612c7-9962-4b83-95d9-268046dad23a}"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 0,
+              "Title": "ResponseTimeConverter.cs",
+              "DocumentMoniker": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\ResponseTimeConverter.cs",
+              "RelativeDocumentMoniker": "TestApp\\ResponseTimeConverter.cs",
+              "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\ResponseTimeConverter.cs",
+              "RelativeToolTip": "TestApp\\ResponseTimeConverter.cs",
+              "ViewState": "AgIAABgBAAAAAAAAAADwvz0BAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-16T09:44:40.488Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 4,
               "Title": "JTLFileProcessingExcelCharts.cs",
               "DocumentMoniker": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\JTLFileProcessingExcelCharts.cs",
               "RelativeDocumentMoniker": "TestApp\\JTLFileProcessingExcelCharts.cs",
               "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\JTLFileProcessingExcelCharts.cs",
               "RelativeToolTip": "TestApp\\JTLFileProcessingExcelCharts.cs",
-              "ViewState": "AgIAAHEBAAAAAAAAAADwv5YBAAAAAAAAAAAAAA==",
+              "ViewState": "AgIAAGABAAAAAAAAAADwv4UBAAAAAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-03-15T14:29:32.61Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
-              "Title": "JTLFileProcessing.cs",
-              "DocumentMoniker": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\JTLFileProcessing.cs",
-              "RelativeDocumentMoniker": "TestApp\\JTLFileProcessing.cs",
-              "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\JTLFileProcessing.cs",
-              "RelativeToolTip": "TestApp\\JTLFileProcessing.cs",
-              "ViewState": "AgIAAM8BAAAAAAAAAADwv/QBAAABAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-03-15T14:29:29.998Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-03-15T14:29:32.61Z"
             },
             {
               "$type": "Document",
@@ -77,13 +88,33 @@
               "RelativeDocumentMoniker": "TestApp\\MainWindow.xaml.cs",
               "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\MainWindow.xaml.cs",
               "RelativeToolTip": "TestApp\\MainWindow.xaml.cs",
-              "ViewState": "AgIAANMBAAAAAAAAAADwv/sBAAABAAAAAAAAAA==",
+              "ViewState": "AgIAANoBAAAAAAAAAADwv/8BAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
               "WhenOpened": "2026-03-11T10:41:58.751Z"
             },
             {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{3ae79031-e1bc-11d0-8f78-00a0c9110057}"
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "ResponseTimeConverterExcelCharts.cs",
+              "DocumentMoniker": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\ResponseTimeConverterExcelCharts.cs",
+              "RelativeDocumentMoniker": "TestApp\\ResponseTimeConverterExcelCharts.cs",
+              "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\ResponseTimeConverterExcelCharts.cs",
+              "RelativeToolTip": "TestApp\\ResponseTimeConverterExcelCharts.cs",
+              "ViewState": "AgIAACcBAAAAAAAAAADwv0wBAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-16T04:40:24.841Z"
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 5,
+              "Title": "JTLFileProcessing.cs",
+              "DocumentMoniker": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\JTLFileProcessing.cs",
+              "RelativeDocumentMoniker": "TestApp\\JTLFileProcessing.cs",
+              "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\JTLFileProcessing.cs",
+              "RelativeToolTip": "TestApp\\JTLFileProcessing.cs",
+              "ViewState": "AgIAAKABAAAAAAAAAADwv8UBAAABAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-15T14:29:29.998Z"
             }
           ]
         }
