@@ -9,7 +9,6 @@ namespace TestApp
 {
     public static class ResponseTimeConverterExcelCharts
     {
-        // Chart dimensions — same constants as JTL charts for visual consistency
         private const long ChartW = 1400L * 9525L;
         private const long ScaleChartH = 55L * 9525L;
         private const long MiniChartH = 55L * 9525L;
@@ -19,185 +18,232 @@ namespace TestApp
 
         // ── Public API ────────────────────────────────────────────────────────
 
-        /// <summary>Used by InjectPendingCharts for clubbed mode.</summary>
-        public static void InjectChartForSheet(
-            string xlsxPath,
-            string sheetName,
-            List<ResponseTimeRecord> records)
-        {
-            // records already sorted by avg desc from AppendToPackage
-            InjectAllCharts(xlsxPath, records);
-        }
-
-        /// <summary>
-        /// Adds a "Latency Charts" sheet with one mini chart per transaction
-        /// sorted by Average descending, then saves to <paramref name="xlsxPath"/>.
-        /// </summary>
+        /// <summary>Single-file path: builds chart sheet, saves, injects XML.</summary>
         public static void AddMiniChartsAndSave(
             ExcelPackage package,
             List<ResponseTimeRecord> records,
             string sheetName,
             string xlsxPath)
         {
-            // Charts sorted by Average descending (slowest first)
-            var byAvg = new List<ResponseTimeRecord>(records);
-            byAvg.Sort((a, b) => b.Average.CompareTo(a.Average));
+            var byAvg = records.OrderByDescending(r => r.Average).ToList();
+            BuildChartSheetShells(package, sheetName, byAvg);
+            package.SaveAs(new FileInfo(xlsxPath));
+            InjectChartsForSheet(xlsxPath, sheetName, byAvg);
+        }
 
-            int n = byAvg.Count;
-
-            // Compute axis scale — cap at 60s, values beyond shown at 65 with real label
-            // Use same approach as JTL: fixed 0-70 scale, 70 label hidden
+        /// <summary>
+        /// Creates the chart worksheet with EPPlus shell charts registered.
+        /// Scale shell is registered FIRST (becomes chart1). Used by both paths.
+        /// </summary>
+        public static ExcelWorksheet BuildChartSheetShells(
+            ExcelPackage package,
+            string sheetName,
+            List<ResponseTimeRecord> records)
+        {
+            int n = records.Count;
             var cs = package.Workbook.Worksheets.Add(sheetName);
             cs.Column(1).Width = 42;
 
-            // Row 1 — title
             cs.Row(1).Height = TitleRowHt;
-            cs.Cells[1, 1].Value = "Transaction Latency \u2013 Average vs 90th Percentile (Seconds)  |  Scale: 0 \u2013 60 s  (values >60 s shown capped at 65 s with actual label)";
+            cs.Cells[1, 1].Value = "Transaction Latency \u2013 Average vs 90th Percentile (Seconds)  |  Scale: 0 \u2013 60 s  (values >60 s capped at 65 s, actual value shown)";
             cs.Cells[1, 1].Style.Font.Bold = true;
             cs.Cells[1, 1].Style.Font.Size = 12;
             cs.Cells[1, 1].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
 
-            // Row 2 — scale row with coloured legend key in col A
             cs.Row(2).Height = ScaleRowHt;
             cs.Cells[2, 1].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
             var rt = cs.Cells[2, 1].RichText;
-            var rtScale = rt.Add("Scale    "); rtScale.Bold = true; rtScale.Color = System.Drawing.Color.Black;
-            var rtAvgSq = rt.Add("\u25A0 "); rtAvgSq.Bold = true; rtAvgSq.Color = System.Drawing.Color.FromArgb(0x20, 0x6B, 0xA3);
-            var rtAvgLb = rt.Add("Avg"); rtAvgLb.Bold = true; rtAvgLb.Color = System.Drawing.Color.Black;
-            var rtSep = rt.Add("    "); rtSep.Color = System.Drawing.Color.Black;
-            var rtP90Sq = rt.Add("\u25A0 "); rtP90Sq.Bold = true; rtP90Sq.Color = System.Drawing.Color.FromArgb(0xE3, 0x6C, 0x09);
-            var rtP90Lb = rt.Add("P90"); rtP90Lb.Bold = true; rtP90Lb.Color = System.Drawing.Color.Black;
+            var rScale = rt.Add("Scale    "); rScale.Bold = true; rScale.Color = System.Drawing.Color.Black;
+            var rAvgSq = rt.Add("\u25A0 "); rAvgSq.Bold = true; rAvgSq.Color = System.Drawing.Color.FromArgb(0x20, 0x6B, 0xA3);
+            var rAvgLb = rt.Add("Avg"); rAvgLb.Bold = true; rAvgLb.Color = System.Drawing.Color.Black;
+            var rSep = rt.Add("    "); rSep.Color = System.Drawing.Color.Black;
+            var rP90Sq = rt.Add("\u25A0 "); rP90Sq.Bold = true; rP90Sq.Color = System.Drawing.Color.FromArgb(0xE3, 0x6C, 0x09);
+            var rP90Lb = rt.Add("P90"); rP90Lb.Bold = true; rP90Lb.Color = System.Drawing.Color.Black;
 
-            // Register scale chart shell (chart1)
-            var scaleChart = (OfficeOpenXml.Drawing.Chart.ExcelBarChart)
-                cs.Drawings.AddChart("ScaleAxis",
-                    OfficeOpenXml.Drawing.Chart.eChartType.BarClustered);
-            scaleChart.SetPosition(1, 0, 1, 0);
-            scaleChart.SetSize(1, 1);
+            // Scale shell FIRST → becomes chart1
+            var scaleShell = (OfficeOpenXml.Drawing.Chart.ExcelBarChart)
+                cs.Drawings.AddChart("ScaleAxis", OfficeOpenXml.Drawing.Chart.eChartType.BarClustered);
+            scaleShell.SetPosition(1, 0, 1, 0);
+            scaleShell.SetSize(1, 1);
 
-            // Rows 3+ — one row per transaction, sorted by avg desc
             for (int i = 0; i < n; i++)
             {
                 int row = 3 + i;
                 cs.Row(row).Height = MiniRowHt;
-                cs.Cells[row, 1].Value = byAvg[i].TransactionName;
+                cs.Cells[row, 1].Value = records[i].TransactionName;
                 cs.Cells[row, 1].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
-
                 var c = (OfficeOpenXml.Drawing.Chart.ExcelBarChart)
-                    cs.Drawings.AddChart($"C{i}",
-                        OfficeOpenXml.Drawing.Chart.eChartType.BarClustered);
+                    cs.Drawings.AddChart($"C{i}", OfficeOpenXml.Drawing.Chart.eChartType.BarClustered);
                 c.SetPosition(row - 1, 0, 1, 0);
                 c.SetSize(1, 1);
             }
-
             cs.View.FreezePanes(3, 1);
-
-            package.SaveAs(new FileInfo(xlsxPath));
-
-            InjectAllCharts(xlsxPath, byAvg);
+            return cs;
         }
 
-        // ── ZIP injection ─────────────────────────────────────────────────────
+        /// <summary>Used by InjectPendingCharts for clubbed mode.</summary>
+        public static void InjectChartForSheet(
+            string xlsxPath,
+            string sheetName,
+            List<ResponseTimeRecord> records)
+        {
+            InjectChartsForSheet(xlsxPath, sheetName, records);
+        }
 
-        private static void InjectAllCharts(string xlsxPath, List<ResponseTimeRecord> records)
+        // ── ZIP injection (sheet-aware) ────────────────────────────────────────
+
+        private static void InjectChartsForSheet(
+            string xlsxPath,
+            string sheetName,
+            List<ResponseTimeRecord> records)
         {
             int n = records.Count;
-
             using var pkg = Package.Open(xlsxPath, FileMode.Open, FileAccess.ReadWrite);
 
-            var chartParts = new List<PackagePart>();
-            PackagePart? drawingPart = null;
+            // Step 1: find sheet rId from workbook.xml by name
+            var wbPart = pkg.GetPart(new Uri("/xl/workbook.xml", UriKind.Relative));
+            string wbXml;
+            using (var sr = new StreamReader(wbPart.GetStream(FileMode.Open, FileAccess.Read)))
+                wbXml = sr.ReadToEnd();
 
-            foreach (var part in pkg.GetParts())
+            string? sheetRid = null;
+            foreach (System.Text.RegularExpressions.Match m in
+                System.Text.RegularExpressions.Regex.Matches(wbXml, @"<sheet\s[^>]*name=""([^""]+)""[^>]*/?>"))
             {
-                var u = part.Uri.ToString();
-                if (u.StartsWith("/xl/charts/chart", System.StringComparison.OrdinalIgnoreCase)
-                    && u.EndsWith(".xml", System.StringComparison.OrdinalIgnoreCase))
-                    chartParts.Add(part);
-                if (u.StartsWith("/xl/drawings/drawing", System.StringComparison.OrdinalIgnoreCase)
-                    && u.EndsWith(".xml", System.StringComparison.OrdinalIgnoreCase)
-                    && !u.Contains("_rels"))
-                    drawingPart = part;
+                if (m.Groups[1].Value.Equals(sheetName, StringComparison.OrdinalIgnoreCase))
+                {
+                    var ridM = System.Text.RegularExpressions.Regex.Match(m.Value, @"r:id=""([^""]+)""");
+                    if (ridM.Success) sheetRid = ridM.Groups[1].Value;
+                    break;
+                }
+            }
+            if (sheetRid == null) return;
+
+            // Step 2: resolve rId to worksheet part via workbook.xml.rels
+            var wbRelsUri = new Uri("/xl/_rels/workbook.xml.rels", UriKind.Relative);
+            if (!pkg.PartExists(wbRelsUri)) return;
+            string wbRels;
+            using (var sr = new StreamReader(pkg.GetPart(wbRelsUri).GetStream(FileMode.Open, FileAccess.Read)))
+                wbRels = sr.ReadToEnd();
+
+            var wsRelMatch = System.Text.RegularExpressions.Regex.Match(
+                wbRels, $@"Id=""{System.Text.RegularExpressions.Regex.Escape(sheetRid)}""[^>]*Target=""([^""]+)""");
+            if (!wsRelMatch.Success) return;
+
+            string wsTarget = wsRelMatch.Groups[1].Value;
+            string wsUriStr = wsTarget.StartsWith("/") ? wsTarget : "/xl/" + wsTarget;
+
+            // Step 3: find drawing from worksheet rels
+            var wsRelsUri = new Uri(
+                wsUriStr.Replace("/xl/worksheets/", "/xl/worksheets/_rels/") + ".rels",
+                UriKind.Relative);
+            if (!pkg.PartExists(wsRelsUri)) return;
+            string wsRels;
+            using (var sr = new StreamReader(pkg.GetPart(wsRelsUri).GetStream(FileMode.Open, FileAccess.Read)))
+                wsRels = sr.ReadToEnd();
+
+            var drawingMatch = System.Text.RegularExpressions.Regex.Match(
+                wsRels, @"Type=""[^""]*drawing[^""]*""\s+Target=""([^""]+)""");
+            if (!drawingMatch.Success) return;
+
+            string drawingTarget = drawingMatch.Groups[1].Value;
+            string drawingUriStr;
+            if (drawingTarget.StartsWith("/"))
+                drawingUriStr = drawingTarget;
+            else
+            {
+                var baseUri = new Uri("http://x/xl/worksheets/");
+                drawingUriStr = "/" + new Uri(baseUri, drawingTarget).AbsolutePath.TrimStart('/');
+            }
+            if (!pkg.PartExists(new Uri(drawingUriStr, UriKind.Relative))) return;
+
+            var drawingPart = pkg.GetPart(new Uri(drawingUriStr, UriKind.Relative));
+            string drawingXml;
+            using (var sr = new StreamReader(drawingPart.GetStream(FileMode.Open, FileAccess.Read)))
+                drawingXml = sr.ReadToEnd();
+
+            var chartPartIds = new List<string>();
+            foreach (System.Text.RegularExpressions.Match m in
+                System.Text.RegularExpressions.Regex.Matches(drawingXml, @"r:id=""([^""]+)"""))
+                chartPartIds.Add(m.Groups[1].Value);
+
+            if (chartPartIds.Count == 0) return;
+
+            var drawingRelsUri = new Uri(
+                drawingPart.Uri.ToString().Replace("/xl/drawings/", "/xl/drawings/_rels/") + ".rels",
+                UriKind.Relative);
+            if (!pkg.PartExists(drawingRelsUri)) return;
+
+            string drawingRels;
+            using (var sr = new StreamReader(pkg.GetPart(drawingRelsUri).GetStream(FileMode.Open, FileAccess.Read)))
+                drawingRels = sr.ReadToEnd();
+
+            var rIdToUri = new Dictionary<string, string>();
+            foreach (System.Text.RegularExpressions.Match m in
+                System.Text.RegularExpressions.Regex.Matches(
+                    drawingRels, @"Id=""([^""]+)""\s+[^>]*Target=""([^""]+)"""))
+                rIdToUri[m.Groups[1].Value] = m.Groups[2].Value;
+
+            // Scale chart (index 0)
+            if (chartPartIds.Count > 0 && rIdToUri.TryGetValue(chartPartIds[0], out var scaleUri))
+            {
+                string fullUri = scaleUri.StartsWith("/") ? scaleUri : "/xl/charts/" + System.IO.Path.GetFileName(scaleUri);
+                if (pkg.PartExists(new Uri(fullUri, UriKind.Relative)))
+                {
+                    var bytes = Encoding.UTF8.GetBytes(BuildScaleChartXml());
+                    using var s = pkg.GetPart(new Uri(fullUri, UriKind.Relative)).GetStream(FileMode.Create, FileAccess.Write);
+                    s.Write(bytes, 0, bytes.Length);
+                }
             }
 
-            chartParts.Sort((a, b) =>
-                ExtractNum(a.Uri.ToString()).CompareTo(ExtractNum(b.Uri.ToString())));
-
-            // Read rIds from existing drawing
-            var rIds = new List<string>();
-            if (drawingPart != null)
+            // Transaction charts
+            for (int i = 0; i < n && (i + 1) < chartPartIds.Count; i++)
             {
-                string d;
-                using (var sr = new StreamReader(
-                    drawingPart.GetStream(FileMode.Open, FileAccess.Read)))
-                    d = sr.ReadToEnd();
-                foreach (System.Text.RegularExpressions.Match m in
-                    System.Text.RegularExpressions.Regex.Matches(d, @"r:id=""([^""]+)"""))
-                    rIds.Add(m.Groups[1].Value);
-            }
-
-            // chart[0] = scale axis
-            if (chartParts.Count > 0)
-            {
-                var bytes = Encoding.UTF8.GetBytes(BuildScaleChartXml());
-                using var s = chartParts[0].GetStream(FileMode.Create, FileAccess.Write);
-                s.Write(bytes, 0, bytes.Length);
-            }
-
-            // chart[1..n] = transaction mini charts
-            for (int i = 0; i < n && (i + 1) < chartParts.Count; i++)
-            {
+                if (!rIdToUri.TryGetValue(chartPartIds[i + 1], out var txUri)) continue;
+                string fullUri = txUri.StartsWith("/") ? txUri : "/xl/charts/" + System.IO.Path.GetFileName(txUri);
+                if (!pkg.PartExists(new Uri(fullUri, UriKind.Relative))) continue;
                 var bytes = Encoding.UTF8.GetBytes(BuildMiniChartXml(records[i], i + 1));
-                using var s = chartParts[i + 1].GetStream(FileMode.Create, FileAccess.Write);
+                using var s = pkg.GetPart(new Uri(fullUri, UriKind.Relative)).GetStream(FileMode.Create, FileAccess.Write);
                 s.Write(bytes, 0, bytes.Length);
             }
 
-            if (drawingPart != null)
-            {
-                var bytes = Encoding.UTF8.GetBytes(BuildDrawingXml(n, rIds));
-                using var s = drawingPart.GetStream(FileMode.Create, FileAccess.Write);
-                s.Write(bytes, 0, bytes.Length);
-            }
+            // Drawing XML
+            var drawingBytes = Encoding.UTF8.GetBytes(BuildDrawingXml(n, chartPartIds));
+            using var ds = drawingPart.GetStream(FileMode.Create, FileAccess.Write);
+            ds.Write(drawingBytes, 0, drawingBytes.Length);
         }
 
         // ── Scale chart XML ───────────────────────────────────────────────────
 
         private static string BuildScaleChartXml()
         {
-            var sb = new StringBuilder(1200);
+            var sb = new StringBuilder(1024);
             sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
             sb.Append("<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"");
             sb.Append(" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"");
             sb.Append(" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
             sb.Append("<c:lang val=\"en-US\"/><c:roundedCorners val=\"0\"/>");
             sb.Append("<c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>");
-            sb.Append("<c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/>");
-            sb.Append("<c:varyColors val=\"0\"/>");
-            // Two invisible dummy series — force axis render + provide Avg/P90 legend colours
+            sb.Append("<c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>");
             foreach (var (idx, name) in new[] { (0, "Avg"), (1, "P90") })
             {
                 sb.Append($"<c:ser><c:idx val=\"{idx}\"/><c:order val=\"{idx}\"/>");
                 sb.Append($"<c:tx><c:v>{name}</c:v></c:tx>");
                 sb.Append("<c:invertIfNegative val=\"0\"/>");
-                sb.Append("<c:cat><c:strLit><c:ptCount val=\"1\"/>");
-                sb.Append("<c:pt idx=\"0\"><c:v> </c:v></c:pt></c:strLit></c:cat>");
-                sb.Append("<c:val><c:numLit><c:ptCount val=\"1\"/>");
-                sb.Append("<c:pt idx=\"0\"><c:v>0</c:v></c:pt></c:numLit></c:val></c:ser>");
+                sb.Append("<c:spPr><a:noFill/><a:ln><a:noFill/></a:ln></c:spPr>");
+                sb.Append("<c:cat><c:strLit><c:ptCount val=\"1\"/><c:pt idx=\"0\"><c:v> </c:v></c:pt></c:strLit></c:cat>");
+                sb.Append("<c:val><c:numLit><c:ptCount val=\"1\"/><c:pt idx=\"0\"><c:v>0</c:v></c:pt></c:numLit></c:val></c:ser>");
             }
             sb.Append("<c:gapWidth val=\"50\"/><c:axId val=\"1\"/><c:axId val=\"2\"/></c:barChart>");
-            sb.Append("<c:catAx><c:axId val=\"1\"/>");
-            sb.Append("<c:scaling><c:orientation val=\"minMax\"/></c:scaling>");
+            sb.Append("<c:catAx><c:axId val=\"1\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>");
             sb.Append("<c:delete val=\"1\"/><c:axPos val=\"l\"/><c:crossAx val=\"2\"/></c:catAx>");
             sb.Append("<c:valAx><c:axId val=\"2\"/>");
-            sb.Append("<c:scaling><c:orientation val=\"minMax\"/>");
-            sb.Append("<c:min val=\"0\"/><c:max val=\"70\"/></c:scaling>");
+            sb.Append("<c:scaling><c:orientation val=\"minMax\"/><c:min val=\"0\"/><c:max val=\"70\"/></c:scaling>");
             sb.Append("<c:delete val=\"0\"/><c:axPos val=\"b\"/><c:majorGridlines/>");
             sb.Append("<c:numFmt formatCode=\"[&lt;70]0;[=70]&quot;&quot;;0\" sourceLinked=\"0\"/>");
-            sb.Append("<c:tickLblPos val=\"low\"/>");
-            sb.Append("<c:crossAx val=\"1\"/><c:crosses val=\"min\"/>");
+            sb.Append("<c:tickLblPos val=\"low\"/><c:crossAx val=\"1\"/><c:crosses val=\"min\"/>");
             sb.Append("<c:crossBetween val=\"between\"/><c:majorUnit val=\"10\"/></c:valAx>");
-            sb.Append("</c:plotArea>");
-            sb.Append("<c:legend><c:delete val=\"1\"/></c:legend>");
+            sb.Append("</c:plotArea><c:legend><c:delete val=\"1\"/></c:legend>");
             sb.Append("<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"zero\"/></c:chart>");
             sb.Append("<c:printSettings><c:headerFooter/>");
             sb.Append("<c:pageMargins b=\"0.25\" l=\"0.25\" r=\"0.25\" t=\"0.25\" header=\"0.3\" footer=\"0.3\"/>");
@@ -210,38 +256,38 @@ namespace TestApp
         private static string BuildMiniChartXml(ResponseTimeRecord r, int idx)
         {
             const double CapAt = 65.0;
-
+            // Average already in seconds from ReadCsv
             double avgReal = System.Math.Round(r.Average, 3);
             double p90Real = r.Percentiles.TryGetValue("90% Line", out double p90v)
                 ? System.Math.Round(p90v, 3) : 0;
             double avgBar = System.Math.Min(avgReal, CapAt);
             double p90Bar = System.Math.Min(p90Real, CapAt);
-
-            string avgBarS = avgBar.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            string p90BarS = p90Bar.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            string avgLblS = avgReal.ToString(System.Globalization.CultureInfo.InvariantCulture);
-            string p90LblS = p90Real.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string avgBarStr = avgBar.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string p90BarStr = p90Bar.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string avgLblStr = avgReal.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string p90LblStr = p90Real.ToString(System.Globalization.CultureInfo.InvariantCulture);
+            string safeName = EscapeXml(r.TransactionName);
             string a1 = (idx * 2 + 1).ToString();
             string a2 = (idx * 2 + 2).ToString();
 
-            var sb = new StringBuilder(1500);
+            var sb = new StringBuilder(1200);
             sb.Append("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>");
             sb.Append("<c:chartSpace xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"");
             sb.Append(" xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\"");
             sb.Append(" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\">");
             sb.Append("<c:lang val=\"en-US\"/><c:roundedCorners val=\"0\"/>");
             sb.Append("<c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:layout/>");
-            sb.Append("<c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/>");
-            sb.Append("<c:varyColors val=\"0\"/>");
+            sb.Append("<c:barChart><c:barDir val=\"bar\"/><c:grouping val=\"clustered\"/><c:varyColors val=\"0\"/>");
 
             foreach (var (sidx, barVal, lblVal) in new[]
             {
-                (0, avgBarS, avgLblS, "Avg"),
-                (1, p90BarS, p90LblS, "P90"),
-            }.Select(t => (t.Item1, t.Item2, t.Item3)))
+                (0, avgBarStr, avgLblStr),
+                (1, p90BarStr, p90LblStr)
+            })
             {
+                string serName = sidx == 0 ? "Avg" : "P90";
                 sb.Append($"<c:ser><c:idx val=\"{sidx}\"/><c:order val=\"{sidx}\"/>");
-                sb.Append($"<c:tx><c:v>{(sidx == 0 ? "Avg" : "P90")}</c:v></c:tx>");
+                sb.Append($"<c:tx><c:v>{serName}</c:v></c:tx>");
                 sb.Append("<c:invertIfNegative val=\"0\"/>");
                 sb.Append("<c:dLbls><c:dLbl><c:idx val=\"0\"/>");
                 sb.Append("<c:tx><c:rich><a:bodyPr/><a:lstStyle/>");
@@ -254,27 +300,23 @@ namespace TestApp
                 sb.Append("<c:showCatName val=\"0\"/><c:showSerName val=\"0\"/>");
                 sb.Append("<c:showPercent val=\"0\"/><c:showBubbleSize val=\"0\"/></c:dLbls>");
                 sb.Append("<c:cat><c:strLit><c:ptCount val=\"1\"/>");
-                sb.Append("<c:pt idx=\"0\"><c:v> </c:v></c:pt></c:strLit></c:cat>");
+                sb.Append($"<c:pt idx=\"0\"><c:v>{safeName}</c:v></c:pt></c:strLit></c:cat>");
                 sb.Append($"<c:val><c:numLit><c:ptCount val=\"1\"/>");
                 sb.Append($"<c:pt idx=\"0\"><c:v>{barVal}</c:v></c:pt></c:numLit></c:val></c:ser>");
             }
 
             sb.Append("<c:gapWidth val=\"50\"/>");
             sb.Append($"<c:axId val=\"{a1}\"/><c:axId val=\"{a2}\"/></c:barChart>");
-            sb.Append($"<c:catAx><c:axId val=\"{a1}\"/>");
-            sb.Append("<c:scaling><c:orientation val=\"minMax\"/></c:scaling>");
+            sb.Append($"<c:catAx><c:axId val=\"{a1}\"/><c:scaling><c:orientation val=\"minMax\"/></c:scaling>");
             sb.Append("<c:delete val=\"1\"/><c:axPos val=\"l\"/>");
             sb.Append($"<c:crossAx val=\"{a2}\"/></c:catAx>");
             sb.Append($"<c:valAx><c:axId val=\"{a2}\"/>");
-            sb.Append("<c:scaling><c:orientation val=\"minMax\"/>");
-            sb.Append("<c:min val=\"0\"/><c:max val=\"70\"/></c:scaling>");
+            sb.Append("<c:scaling><c:orientation val=\"minMax\"/><c:min val=\"0\"/><c:max val=\"70\"/></c:scaling>");
             sb.Append("<c:delete val=\"0\"/><c:axPos val=\"b\"/>");
-            sb.Append("<c:tickLblPos val=\"none\"/>");
-            sb.Append("<c:spPr><a:ln><a:noFill/></a:ln></c:spPr>");
+            sb.Append("<c:tickLblPos val=\"none\"/><c:spPr><a:ln><a:noFill/></a:ln></c:spPr>");
             sb.Append($"<c:crossAx val=\"{a1}\"/><c:crosses val=\"min\"/>");
             sb.Append("<c:crossBetween val=\"between\"/><c:majorUnit val=\"10\"/></c:valAx>");
-            sb.Append("</c:plotArea>");
-            sb.Append("<c:legend><c:delete val=\"1\"/></c:legend>");
+            sb.Append("</c:plotArea><c:legend><c:delete val=\"1\"/></c:legend>");
             sb.Append("<c:plotVisOnly val=\"1\"/><c:dispBlanksAs val=\"zero\"/></c:chart>");
             sb.Append("<c:printSettings><c:headerFooter/>");
             sb.Append("<c:pageMargins b=\"0.25\" l=\"0.25\" r=\"0.25\" t=\"0.25\" header=\"0.3\" footer=\"0.3\"/>");
@@ -302,7 +344,6 @@ namespace TestApp
                 long cy = i == 0 ? ScaleChartH : MiniChartH;
                 int row = i + 1;
                 string name = i == 0 ? "ScaleAxis" : $"C{i - 1}";
-
                 sb.Append("<xdr:oneCellAnchor>");
                 sb.Append($"<xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff>");
                 sb.Append($"<xdr:row>{row}</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from>");
@@ -311,14 +352,12 @@ namespace TestApp
                 sb.Append("<xdr:nvGraphicFramePr>");
                 sb.Append($"<xdr:cNvPr id=\"{i + 2}\" name=\"{name}\"/>");
                 sb.Append("<xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>");
-                sb.Append($"<xdr:xfrm><a:off x=\"0\" y=\"0\"/>");
-                sb.Append($"<a:ext cx=\"{ChartW}\" cy=\"{cy}\"/></xdr:xfrm>");
+                sb.Append($"<xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"{ChartW}\" cy=\"{cy}\"/></xdr:xfrm>");
                 sb.Append("<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\">");
                 sb.Append($"<c:chart xmlns:c=\"{cNs}\" r:id=\"{rId}\"/>");
                 sb.Append("</a:graphicData></a:graphic></xdr:graphicFrame>");
                 sb.Append("<xdr:clientData/></xdr:oneCellAnchor>");
             }
-
             sb.Append("</xdr:wsDr>");
             return sb.ToString();
         }
@@ -328,5 +367,9 @@ namespace TestApp
             var m = System.Text.RegularExpressions.Regex.Match(uri, @"chart(\d+)\.xml");
             return m.Success ? int.Parse(m.Groups[1].Value) : 0;
         }
+
+        private static string EscapeXml(string s) =>
+            s.Replace("&", "&amp;").Replace("<", "&lt;")
+             .Replace(">", "&gt;").Replace("\"", "&quot;").Replace("'", "&apos;");
     }
 }

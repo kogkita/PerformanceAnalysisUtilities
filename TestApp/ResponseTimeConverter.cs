@@ -77,27 +77,13 @@ namespace TestApp
 
             if (includeCharts && records.Count > 0)
             {
-                // For clubbed mode: register chart shells, store for later injection
                 var byAvg = records.OrderByDescending(r => r.Average).ToList();
                 _pendingCharts[chartName] = (byAvg, package);
 
-                var cs = package.Workbook.Worksheets.Add(chartName);
-                cs.Column(1).Width = 42;
-                for (int i = 0; i < byAvg.Count; i++)
-                {
-                    int row = 3 + i;
-                    var c = (OfficeOpenXml.Drawing.Chart.ExcelBarChart)
-                        cs.Drawings.AddChart($"RC{i}",
-                            OfficeOpenXml.Drawing.Chart.eChartType.BarClustered);
-                    c.SetPosition(row - 1, 0, 1, 0);
-                    c.SetSize(1, 1);
-                }
-                // Also add scale shell
-                var scale = (OfficeOpenXml.Drawing.Chart.ExcelBarChart)
-                    cs.Drawings.AddChart("ScaleAxis",
-                        OfficeOpenXml.Drawing.Chart.eChartType.BarClustered);
-                scale.SetPosition(1, 0, 1, 0);
-                scale.SetSize(1, 1);
+                // Build the full chart sheet (same setup as AddMiniChartsAndSave)
+                // Scale shell is registered FIRST so it becomes chart1 in the ZIP
+                ResponseTimeConverterExcelCharts.BuildChartSheetShells(
+                    package, chartName, byAvg);
             }
         }
 
