@@ -21,6 +21,9 @@ namespace TestApp
         {
             InitializeComponent();
             activeNavButton = NavConvert;
+            // Populate BLG counter preview on startup — the radio is pre-checked so
+            // the Checked event never fires until the user actually clicks it.
+            Loaded += (_, _) => UpdateBLGUI();
         }
 
         // ── Custom title bar ─────────────────────────────────
@@ -500,6 +503,7 @@ namespace TestApp
         // ── BLG File Conversion page ──────────────────────────
 
         private readonly List<string> blgSelectedFiles = new();
+        private string? blgCustomCounterFile = null;
 
         private void BLGAddFiles(IEnumerable<string> paths)
         {
@@ -556,6 +560,63 @@ namespace TestApp
                 ? "No files selected"
                 : count == 1 ? "1 file selected" : $"{count} files selected";
             BLGClearAllButton.Visibility = count > 0 ? Visibility.Visible : Visibility.Collapsed;
+
+            RefreshBLGCommandPreview();
+            RefreshBLGCounterPreview();
+        }
+
+        private BlgServerType SelectedBlgServerType =>
+            BLGRadioDb?.IsChecked == true ? BlgServerType.DbServer : BlgServerType.AppServer;
+
+        private void RefreshBLGCommandPreview()
+        {
+            if (BLGCommandPreview == null) return;
+            var opts = BuildBlgOptions(blgSelectedFiles.FirstOrDefault() ?? string.Empty);
+            BLGCommandPreview.Text = BLGConverter.BuildCommandPreview(opts);
+        }
+
+        private void RefreshBLGCounterPreview()
+        {
+            if (BLGCounterPreviewList == null) return;
+            var opts = BuildBlgOptions(string.Empty);
+            BLGCounterPreviewList.ItemsSource = BLGConverter.PreviewCounters(opts);
+        }
+
+        private BlgConvertOptions BuildBlgOptions(string blgPath) => new()
+        {
+            BlgPath = blgPath,
+            ServerType = SelectedBlgServerType,
+            CustomCounterFilePath = blgCustomCounterFile,
+        };
+
+        private void BLGServerType_Changed(object sender, RoutedEventArgs e)
+            => UpdateBLGUI();
+
+        private void BLGCounterFileBrowse_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new OpenFileDialog
+            {
+                Title = "Select counter filter file",
+                Filter = "Text Files (*.txt)|*.txt|All Files (*.*)|*.*",
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            blgCustomCounterFile = dlg.FileName;
+            BLGCounterFileLabel.Text = System.IO.Path.GetFileName(dlg.FileName);
+            BLGCounterFileLabel.Foreground = new SolidColorBrush(
+                (Color)ColorConverter.ConvertFromString("#7DD3FC"));
+            BLGCounterFileClearBtn.Visibility = Visibility.Visible;
+            UpdateBLGUI();
+        }
+
+        private void BLGCounterFileClear_Click(object sender, RoutedEventArgs e)
+        {
+            blgCustomCounterFile = null;
+            BLGCounterFileLabel.Text = "Using default template";
+            BLGCounterFileLabel.Foreground = new SolidColorBrush(
+                (Color)ColorConverter.ConvertFromString("#4A5568"));
+            BLGCounterFileClearBtn.Visibility = Visibility.Collapsed;
+            UpdateBLGUI();
         }
 
         private void BLGBrowseFile_Click(object sender, RoutedEventArgs e)
@@ -602,10 +663,61 @@ namespace TestApp
                 return;
             }
 
-            // TODO: implement BLG conversion logic
-            MessageBox.Show(
-                "BLG conversion is not yet implemented.\n\nThis feature will process Windows Performance Monitor .blg files and export the counter data to Excel.",
-                "Coming Soon", MessageBoxButton.OK, MessageBoxImage.Information);
+            BLGStatusLabel.Text = $"Converting {blgSelectedFiles.Count} file(s)…";
+            BLGStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x60, 0xA5, 0xFA));
+
+            var filesToProcess = blgSelectedFiles.ToList();
+            var serverType = SelectedBlgServerType;
+            var customCf = blgCustomCounterFile;
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var succeeded = new List<string>();
+                var errors = new List<string>();
+
+                foreach (var blgPath in filesToProcess)
+                {
+                    try
+                    {
+                        var opts = new BlgConvertOptions
+                        {
+                            BlgPath = blgPath,
+                            ServerType = serverType,
+                            CustomCounterFilePath = customCf,
+                        };
+                        string csv = BLGConverter.ConvertToCsv(opts);
+                        succeeded.Add(csv);
+                    }
+                    catch (Exception ex)
+                    {
+                        errors.Add($"{System.IO.Path.GetFileName(blgPath)}: {ex.Message}");
+                    }
+                }
+
+                Dispatcher.Invoke(() =>
+                {
+                    if (errors.Count == 0)
+                    {
+                        BLGStatusLabel.Text = $"Done — {succeeded.Count} CSV file(s) created.";
+                        BLGStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+
+                        string detail = string.Join("\n", succeeded.Select(p => $"  • {p}"));
+                        MessageBox.Show(
+                            $"{succeeded.Count} CSV file(s) created successfully:\n\n{detail}",
+                            "Conversion Complete", MessageBoxButton.OK, MessageBoxImage.Information);
+                    }
+                    else
+                    {
+                        BLGStatusLabel.Text = $"Completed with {errors.Count} error(s).";
+                        BLGStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+
+                        string msg = succeeded.Count > 0
+                            ? $"{succeeded.Count} succeeded, {errors.Count} failed:\n\n{string.Join("\n", errors)}"
+                            : $"All conversions failed:\n\n{string.Join("\n", errors)}";
+                        MessageBox.Show(msg, "Conversion Errors", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    }
+                });
+            });
         }
 
         // ── nmon Analyzer page ────────────────────────────────

@@ -3,6 +3,10 @@
   "WorkspaceRootPath": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\blgconverter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
+      "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\blgconverter.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|c:\\users\\hgullipalli\\onedrive - infor\\documents\\visualstudio\\testapp\\testapp\\mainwindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}",
       "RelativeMoniker": "D:0:0:{A0A5516F-CF94-4F6B-6308-242CCA1A71A5}|TestApp\\TestApp.csproj|solutionrelative:testapp\\mainwindow.xaml.cs||{A6C744A8-0E4A-4FC6-886A-064283054674}"
     },
@@ -18,11 +22,11 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 3,
+          "SelectedChildIndex": 2,
           "Children": [
             {
               "$type": "Bookmark",
-              "Name": "ST:0:0:{cce594b6-0c39-4442-ba28-10c64ac7e89f}"
+              "Name": "ST:0:0:{3ae79031-e1bc-11d0-8f78-00a0c9110057}"
             },
             {
               "$type": "Bookmark",
@@ -30,32 +34,39 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 0,
+              "Title": "BLGConverter.cs",
+              "DocumentMoniker": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\BLGConverter.cs",
+              "RelativeDocumentMoniker": "TestApp\\BLGConverter.cs",
+              "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\BLGConverter.cs",
+              "RelativeToolTip": "TestApp\\BLGConverter.cs",
+              "ViewState": "AgIAAL0AAAAAAAAAAADwv+IAAAAAAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
+              "WhenOpened": "2026-03-17T07:03:41.602Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
               "Title": "MainWindow.xaml",
               "DocumentMoniker": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\MainWindow.xaml",
               "RelativeDocumentMoniker": "TestApp\\MainWindow.xaml",
               "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\MainWindow.xaml",
               "RelativeToolTip": "TestApp\\MainWindow.xaml",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.003549|",
-              "WhenOpened": "2026-03-11T10:41:59.671Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-03-11T10:41:59.671Z"
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 1,
               "Title": "MainWindow.xaml.cs",
               "DocumentMoniker": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\MainWindow.xaml.cs",
               "RelativeDocumentMoniker": "TestApp\\MainWindow.xaml.cs",
               "ToolTip": "C:\\Users\\hgullipalli\\OneDrive - Infor\\Documents\\VisualStudio\\TestApp\\TestApp\\MainWindow.xaml.cs",
               "RelativeToolTip": "TestApp\\MainWindow.xaml.cs",
-              "ViewState": "AgIAAC0DAAAAAAAAAADwv1IDAAABAAAAAAAAAA==",
+              "ViewState": "AgIAAJ0DAAAAAAAAAADwv8IDAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000738|",
-              "WhenOpened": "2026-03-11T10:41:58.751Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Bookmark",
-              "Name": "ST:0:0:{3ae79031-e1bc-11d0-8f78-00a0c9110057}"
+              "WhenOpened": "2026-03-11T10:41:58.751Z"
             }
           ]
         }
