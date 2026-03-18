@@ -252,8 +252,9 @@
 
                         <Rectangle DockPanel.Dock="Top" Height="1" Fill="#1E2130" Margin="12,0"/>
 
+                        <!-- ── JMeter Tools group ── -->
                         <TextBlock DockPanel.Dock="Top"
-                                   Text="TOOLS"
+                                   Text="JMETER TOOLS"
                                    FontSize="10"
                                    FontWeight="Bold"
                                    Foreground="#3D4560"
@@ -279,6 +280,28 @@
                                 </StackPanel>
                             </Button>
 
+                            <Button x:Name="NavCompare"
+                                    Style="{StaticResource NavButtonStyle}"
+                                    Click="NavCompare_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="&#x21C4;" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Run Comparison" TextWrapping="Wrap" MaxWidth="130" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
+                        </StackPanel>
+
+                        <!-- ── System Monitoring group ── -->
+                        <Rectangle DockPanel.Dock="Top" Height="1" Fill="#1E2130" Margin="12,8"/>
+
+                        <TextBlock DockPanel.Dock="Top"
+                                   Text="SYSTEM MONITORING"
+                                   FontSize="10"
+                                   FontWeight="Bold"
+                                   Foreground="#3D4560"
+                                   FontFamily="Segoe UI Variable, Segoe UI"
+                                   Margin="20,4,0,4"/>
+
+                        <StackPanel DockPanel.Dock="Top" Margin="0,4,0,0">
                             <Button x:Name="NavBLG"
                                     Style="{StaticResource NavButtonStyle}"
                                     Click="NavBLG_Click">
@@ -294,15 +317,6 @@
                                 <StackPanel Orientation="Horizontal">
                                     <TextBlock Text="&#x1F5A5;" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
                                     <TextBlock Text="nmon Analyzer" TextWrapping="Wrap" MaxWidth="130" VerticalAlignment="Center"/>
-                                </StackPanel>
-                            </Button>
-
-                            <Button x:Name="NavCompare"
-                                    Style="{StaticResource NavButtonStyle}"
-                                    Click="NavCompare_Click">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="&#x21C4;" FontSize="14" Margin="0,0,10,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Run Comparison" TextWrapping="Wrap" MaxWidth="130" VerticalAlignment="Center"/>
                                 </StackPanel>
                             </Button>
                         </StackPanel>
@@ -1248,114 +1262,59 @@
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
                                 <RowDefinition Height="*"/>
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
                             <!-- Heading -->
-                            <StackPanel Grid.Row="0" Margin="0,0,0,24">
+                            <StackPanel Grid.Row="0" Margin="0,0,0,20">
                                 <TextBlock Text="Run Comparison"
                                            FontSize="21" FontWeight="SemiBold"
                                            Foreground="#E2E8F0"
                                            FontFamily="Segoe UI Variable, Segoe UI"/>
-                                <TextBlock Text="Load a baseline and a current run (CSV or JTL) and export a delta report showing regressions, improvements, and SLA breaches."
+                                <TextBlock Text="First file is always the baseline. Browse or drag &amp; drop onto each row. Add more runs with + Add Run."
                                            FontSize="12.5" Foreground="#4A5568"
                                            FontFamily="Segoe UI Variable, Segoe UI"
                                            Margin="0,5,0,0" TextWrapping="Wrap"/>
                             </StackPanel>
 
-                            <!-- File pickers -->
-                            <Grid Grid.Row="1" Margin="0,0,0,16">
-                                <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="12"/>
-                                    <RowDefinition Height="Auto"/>
-                                </Grid.RowDefinitions>
+                            <!-- Dynamic file rows (built in code-behind) -->
+                            <StackPanel Grid.Row="1"
+                                        x:Name="CmpFileRowsPanel"
+                                        Margin="0,0,0,8"/>
 
-                                <!-- Baseline -->
-                                <Grid Grid.Row="0">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="90"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Baseline"
-                                               Foreground="#8B93A5" FontSize="12.5"
-                                               FontFamily="Segoe UI Variable, Segoe UI"
-                                               VerticalAlignment="Center"/>
-                                    <Border Grid.Column="1"
-                                            Background="#161B2A" BorderBrush="#252D42"
-                                            BorderThickness="1" CornerRadius="6" Height="40">
-                                        <TextBlock x:Name="CmpBaselineLabel"
-                                                   Text="No file selected"
-                                                   Foreground="#8B93A5" FontSize="12"
-                                                   FontFamily="Consolas, Segoe UI Mono, Segoe UI"
-                                                   VerticalAlignment="Center" Padding="12,0"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </Border>
-                                    <Button Grid.Column="2" Content="Browse…"
-                                            Style="{StaticResource ActionButtonStyle}"
-                                            Background="#2563EB" Foreground="White"
-                                            FontSize="13" FontWeight="SemiBold"
-                                            Width="90" Height="40" Margin="10,0,0,0"
-                                            Click="CmpBrowseBaseline_Click"/>
-                                    <Button Grid.Column="3" x:Name="CmpClearBaselineBtn"
-                                            Content="Clear"
-                                            Style="{StaticResource ActionButtonStyle}"
-                                            Background="#374151" Foreground="#9CA3AF"
-                                            FontSize="12" Width="60" Height="40"
-                                            Margin="8,0,0,0" Visibility="Collapsed"
-                                            Click="CmpClearBaseline_Click"/>
-                                </Grid>
-
-                                <!-- Current -->
-                                <Grid Grid.Row="2">
-                                    <Grid.ColumnDefinitions>
-                                        <ColumnDefinition Width="90"/>
-                                        <ColumnDefinition Width="*"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                        <ColumnDefinition Width="Auto"/>
-                                    </Grid.ColumnDefinitions>
-                                    <TextBlock Grid.Column="0" Text="Current"
-                                               Foreground="#8B93A5" FontSize="12.5"
-                                               FontFamily="Segoe UI Variable, Segoe UI"
-                                               VerticalAlignment="Center"/>
-                                    <Border Grid.Column="1"
-                                            Background="#161B2A" BorderBrush="#252D42"
-                                            BorderThickness="1" CornerRadius="6" Height="40">
-                                        <TextBlock x:Name="CmpCurrentLabel"
-                                                   Text="No file selected"
-                                                   Foreground="#8B93A5" FontSize="12"
-                                                   FontFamily="Consolas, Segoe UI Mono, Segoe UI"
-                                                   VerticalAlignment="Center" Padding="12,0"
-                                                   TextTrimming="CharacterEllipsis"/>
-                                    </Border>
-                                    <Button Grid.Column="2" Content="Browse…"
-                                            Style="{StaticResource ActionButtonStyle}"
-                                            Background="#2563EB" Foreground="White"
-                                            FontSize="13" FontWeight="SemiBold"
-                                            Width="90" Height="40" Margin="10,0,0,0"
-                                            Click="CmpBrowseCurrent_Click"/>
-                                    <Button Grid.Column="3" x:Name="CmpClearCurrentBtn"
-                                            Content="Clear"
-                                            Style="{StaticResource ActionButtonStyle}"
-                                            Background="#374151" Foreground="#9CA3AF"
-                                            FontSize="12" Width="60" Height="40"
-                                            Margin="8,0,0,0" Visibility="Collapsed"
-                                            Click="CmpClearCurrent_Click"/>
-                                </Grid>
-                            </Grid>
+                            <!-- Add Run button -->
+                            <Button Grid.Row="2"
+                                    x:Name="CmpAddRunBtn"
+                                    Style="{StaticResource ActionButtonStyle}"
+                                    Background="#161B2A"
+                                    BorderBrush="#252D42"
+                                    BorderThickness="1"
+                                    Foreground="#60A5FA"
+                                    FontSize="12.5"
+                                    FontWeight="SemiBold"
+                                    Height="36"
+                                    HorizontalAlignment="Left"
+                                    Padding="14,0"
+                                    Margin="0,0,0,16"
+                                    Click="CmpAddRun_Click">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="+" FontSize="16" FontWeight="Bold"
+                                               VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                    <TextBlock Text="Add Run" VerticalAlignment="Center"/>
+                                </StackPanel>
+                            </Button>
 
                             <!-- Options row -->
-                            <Grid Grid.Row="2">
+                            <Grid Grid.Row="3">
                                 <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="Auto"/>
                                     <ColumnDefinition Width="*"/>
                                 </Grid.ColumnDefinitions>
 
-                                <!-- File type selector -->
                                 <Border Grid.Column="0"
                                         Background="#161B2A" BorderBrush="#252D42"
                                         BorderThickness="1" CornerRadius="6"
@@ -1376,8 +1335,32 @@
                                     </StackPanel>
                                 </Border>
 
-                                <!-- SLA threshold -->
+                                <!-- Comparison mode -->
                                 <Border Grid.Column="1"
+                                        Background="#161B2A" BorderBrush="#252D42"
+                                        BorderThickness="1" CornerRadius="6"
+                                        Height="42" Padding="14,0" Margin="12,0,0,0">
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="Mode "
+                                                   Foreground="#8B93A5" FontSize="12.5"
+                                                   FontFamily="Segoe UI Variable, Segoe UI"
+                                                   VerticalAlignment="Center"/>
+                                        <RadioButton x:Name="CmpModeAllVsBaseline"
+                                                     Content="Baseline vs each run" IsChecked="True"
+                                                     Foreground="#8B93A5" FontSize="12.5"
+                                                     FontFamily="Segoe UI Variable, Segoe UI"
+                                                     Margin="8,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                                                     ToolTip="Baseline vs Run 2, Baseline vs Run 3, Baseline vs Run 4 …"/>
+                                        <RadioButton x:Name="CmpModeSequential"
+                                                     Content="Sequential (each vs previous)" IsChecked="False"
+                                                     Foreground="#8B93A5" FontSize="12.5"
+                                                     FontFamily="Segoe UI Variable, Segoe UI"
+                                                     Margin="10,0,0,0" VerticalAlignment="Center" Cursor="Hand"
+                                                     ToolTip="Baseline vs Run 2, Run 2 vs Run 3, Run 3 vs Run 4 …"/>
+                                    </StackPanel>
+                                </Border>
+
+                                <Border Grid.Column="2"
                                         Background="#161B2A" BorderBrush="#252D42"
                                         BorderThickness="1" CornerRadius="6"
                                         Height="42" Padding="14,0" Margin="12,0,0,0">
@@ -1403,7 +1386,7 @@
                             </Grid>
 
                             <!-- Run button -->
-                            <Grid Grid.Row="4" Margin="0,16,0,0">
+                            <Grid Grid.Row="5" Margin="0,16,0,0">
                                 <Button Content="Run Comparison"
                                         Style="{StaticResource ActionButtonStyle}"
                                         Background="#7C3AED" Foreground="White"

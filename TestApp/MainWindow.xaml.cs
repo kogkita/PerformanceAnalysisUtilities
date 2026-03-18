@@ -90,7 +90,11 @@ namespace TestApp
             => SetActivePage(NavNmon, PageNmon);
 
         private void NavCompare_Click(object sender, RoutedEventArgs e)
-            => SetActivePage(NavCompare, PageCompare);
+        {
+            SetActivePage(NavCompare, PageCompare);
+            if (CmpFileRowsPanel.Children.Count == 0)
+                CmpRebuildRows();
+        }
 
         // ── File list helpers ────────────────────────────────
 
@@ -725,8 +729,7 @@ namespace TestApp
         // ── nmon Analyzer page ────────────────────────────────
 
         private readonly List<string> nmonSelectedFiles = new();
-        private string? cmpBaselinePath = null;
-        private string? cmpCurrentPath = null;
+
 
         private void NmonAddFiles(IEnumerable<string> paths)
         {
@@ -966,72 +969,229 @@ namespace TestApp
 
         // ── Run Comparison page ──────────────────────────────
 
-        private void CmpBrowseBaseline_Click(object sender, RoutedEventArgs e)
+        private readonly List<string> cmpRunFiles = new();
+
+        // Called on page load and whenever files change — rebuilds the row list
+        private void CmpRebuildRows()
+        {
+            CmpFileRowsPanel.Children.Clear();
+
+            // Always show at least 2 rows (Baseline + Run 2)
+            int displayCount = Math.Max(2, cmpRunFiles.Count);
+
+            for (int i = 0; i < displayCount; i++)
+            {
+                string path = i < cmpRunFiles.Count ? cmpRunFiles[i] : string.Empty;
+                bool isBaseline = i == 0;
+                bool hasFile = !string.IsNullOrEmpty(path);
+                int capturedIdx = i;
+
+                // Badge label
+                string badgeText = isBaseline ? "Baseline" : $"Run {i + 1}";
+                string badgeBg = isBaseline ? "#1E3A8A" : "#1E293B";
+                string badgeFg = isBaseline ? "#93C5FD" : "#7DD3FC";
+
+                // Outer row grid: badge | drop-zone border (path label) | browse btn | clear btn
+                var row = new Grid { Margin = new Thickness(0, 0, 0, 10) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(80) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+
+                // Badge
+                var badge = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(badgeBg)),
+                    CornerRadius = new CornerRadius(5),
+                    Padding = new Thickness(0),
+                    Margin = new Thickness(0, 0, 10, 0),
+                    Height = 40,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                badge.Child = new TextBlock
+                {
+                    Text = badgeText,
+                    FontSize = 11,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(badgeFg)),
+                    FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"),
+                    HorizontalAlignment = HorizontalAlignment.Center,
+                    VerticalAlignment = VerticalAlignment.Center
+                };
+                Grid.SetColumn(badge, 0);
+
+                // Path label border (also acts as drop target)
+                var pathBorder = new Border
+                {
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#161B2A")),
+                    BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#252D42")),
+                    BorderThickness = new Thickness(1),
+                    CornerRadius = new CornerRadius(6),
+                    Height = 40,
+                    AllowDrop = true
+                };
+                var pathLabel = new TextBlock
+                {
+                    Text = hasFile ? path : "No file selected — browse or drag & drop here",
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                                            hasFile ? "#7DD3FC" : "#8B93A5")),
+                    FontSize = 12,
+                    FontFamily = new FontFamily("Consolas, Segoe UI Mono, Segoe UI"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    Padding = new Thickness(12, 0, 12, 0),
+                    ToolTip = hasFile ? path : null
+                };
+                pathBorder.Child = pathLabel;
+
+                // Drag-drop on the path border
+                pathBorder.DragEnter += (s, e) =>
+                {
+                    if (e.Data.GetDataPresent(DataFormats.FileDrop))
+                        ((Border)s).BorderBrush = new SolidColorBrush(
+                            (Color)ColorConverter.ConvertFromString("#2563EB"));
+                };
+                pathBorder.DragLeave += (s, e) =>
+                {
+                    ((Border)s).BorderBrush = new SolidColorBrush(
+                        (Color)ColorConverter.ConvertFromString("#252D42"));
+                };
+                pathBorder.Drop += (s, e) =>
+                {
+                    ((Border)s).BorderBrush = new SolidColorBrush(
+                        (Color)ColorConverter.ConvertFromString("#252D42"));
+                    if (e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
+                        CmpSetFile(capturedIdx, files[0]);
+                };
+                Grid.SetColumn(pathBorder, 1);
+
+                // Browse button
+                var browseBtn = new Button
+                {
+                    Content = "Browse\u2026",
+                    Width = 90,
+                    Height = 40,
+                    Margin = new Thickness(10, 0, 0, 0),
+                    FontSize = 13,
+                    FontWeight = FontWeights.SemiBold,
+                    Foreground = Brushes.White,
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2563EB")),
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand
+                };
+                browseBtn.Style = (Style)Resources["ActionButtonStyle"];
+                browseBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2563EB"));
+                browseBtn.Foreground = Brushes.White;
+                browseBtn.Click += (_, _) => CmpBrowseRow(capturedIdx);
+                Grid.SetColumn(browseBtn, 2);
+
+                // Clear button (only visible when file is set, and only for rows beyond the first two)
+                var clearBtn = new Button
+                {
+                    Content = "Clear",
+                    Width = 60,
+                    Height = 40,
+                    Margin = new Thickness(8, 0, 0, 0),
+                    FontSize = 12,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9CA3AF")),
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151")),
+                    BorderThickness = new Thickness(0),
+                    Cursor = Cursors.Hand,
+                    Visibility = hasFile ? Visibility.Visible : Visibility.Collapsed
+                };
+                clearBtn.Style = (Style)Resources["ActionButtonStyle"];
+                clearBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#374151"));
+                clearBtn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#9CA3AF"));
+                clearBtn.Click += (_, _) =>
+                {
+                    // If this is a "bonus" row (index >= 2) and empty after clearing — remove it
+                    if (capturedIdx >= 2)
+                    {
+                        cmpRunFiles.RemoveAt(capturedIdx);
+                    }
+                    else
+                    {
+                        // For baseline / run 2, just clear the path
+                        if (capturedIdx < cmpRunFiles.Count)
+                            cmpRunFiles[capturedIdx] = string.Empty;
+                    }
+                    CmpRebuildRows();
+                };
+                Grid.SetColumn(clearBtn, 3);
+
+                row.Children.Add(badge);
+                row.Children.Add(pathBorder);
+                row.Children.Add(browseBtn);
+                row.Children.Add(clearBtn);
+                CmpFileRowsPanel.Children.Add(row);
+            }
+        }
+
+        private void CmpSetFile(int index, string path)
         {
             bool jtl = CmpTypeJtl.IsChecked == true;
+            string ext = jtl ? ".jtl" : ".csv";
+            if (!path.EndsWith(ext, StringComparison.OrdinalIgnoreCase))
+            {
+                MessageBox.Show($"Please select a {ext.ToUpperInvariant()} file to match the selected file type.",
+                    "Wrong File Type", MessageBoxButton.OK, MessageBoxImage.Warning);
+                return;
+            }
+
+            // Grow the list if needed
+            while (cmpRunFiles.Count <= index)
+                cmpRunFiles.Add(string.Empty);
+
+            cmpRunFiles[index] = path;
+            CmpRebuildRows();
+        }
+
+        private void CmpBrowseRow(int index)
+        {
+            bool jtl = CmpTypeJtl.IsChecked == true;
+            string label = index == 0 ? "Select Baseline File" : $"Select Run {index + 1} File";
             var dlg = new OpenFileDialog
             {
-                Title = "Select Baseline File",
+                Title = label,
                 Filter = jtl
                     ? "JTL Files (*.jtl)|*.jtl|All Files (*.*)|*.*"
                     : "CSV Files (*.csv)|*.csv|All Files (*.*)|*.*"
             };
             if (dlg.ShowDialog() != true) return;
-            cmpBaselinePath = dlg.FileName;
-            CmpBaselineLabel.Text = dlg.FileName;
-            CmpBaselineLabel.Foreground = new SolidColorBrush(
-                (Color)ColorConverter.ConvertFromString("#7DD3FC"));
-            CmpClearBaselineBtn.Visibility = Visibility.Visible;
+            CmpSetFile(index, dlg.FileName);
         }
 
-        private void CmpClearBaseline_Click(object sender, RoutedEventArgs e)
+        private void CmpAddRun_Click(object sender, RoutedEventArgs e)
         {
-            cmpBaselinePath = null;
-            CmpBaselineLabel.Text = "No file selected";
-            CmpBaselineLabel.Foreground = new SolidColorBrush(
-                (Color)ColorConverter.ConvertFromString("#8B93A5"));
-            CmpClearBaselineBtn.Visibility = Visibility.Collapsed;
+            // Add a new empty slot at the end
+            cmpRunFiles.Add(string.Empty);
+            CmpRebuildRows();
+
+            // Immediately open browse for the new slot
+            CmpBrowseRow(cmpRunFiles.Count - 1);
         }
 
-        private void CmpBrowseCurrent_Click(object sender, RoutedEventArgs e)
-        {
-            bool jtl = CmpTypeJtl.IsChecked == true;
-            var dlg = new OpenFileDialog
-            {
-                Title = "Select Current Run File",
-                Filter = jtl
-                    ? "JTL Files (*.jtl)|*.jtl|All Files (*.*)|*.*"
-                    : "CSV Files (*.csv)|*.csv|All Files (*.*)|*.*"
-            };
-            if (dlg.ShowDialog() != true) return;
-            cmpCurrentPath = dlg.FileName;
-            CmpCurrentLabel.Text = dlg.FileName;
-            CmpCurrentLabel.Foreground = new SolidColorBrush(
-                (Color)ColorConverter.ConvertFromString("#7DD3FC"));
-            CmpClearCurrentBtn.Visibility = Visibility.Visible;
-        }
-
-        private void CmpClearCurrent_Click(object sender, RoutedEventArgs e)
-        {
-            cmpCurrentPath = null;
-            CmpCurrentLabel.Text = "No file selected";
-            CmpCurrentLabel.Foreground = new SolidColorBrush(
-                (Color)ColorConverter.ConvertFromString("#8B93A5"));
-            CmpClearCurrentBtn.Visibility = Visibility.Collapsed;
-        }
+        // ── Run ──────────────────────────────────────────────────────────────
 
         private void CmpRun_Click(object sender, RoutedEventArgs e)
         {
-            if (string.IsNullOrEmpty(cmpBaselinePath) || !File.Exists(cmpBaselinePath))
+            // Collect non-empty paths in order
+            var paths = cmpRunFiles.Where(p => !string.IsNullOrEmpty(p)).ToList();
+
+            if (paths.Count < 2)
             {
-                MessageBox.Show("Please select a valid baseline file.",
-                    "Missing File", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(
+                    "Please select at least two files — the first is the baseline.",
+                    "Not Enough Files", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
-            if (string.IsNullOrEmpty(cmpCurrentPath) || !File.Exists(cmpCurrentPath))
+
+            var missing = paths.Where(f => !File.Exists(f)).ToList();
+            if (missing.Count > 0)
             {
-                MessageBox.Show("Please select a valid current run file.",
-                    "Missing File", MessageBoxButton.OK, MessageBoxImage.Warning);
+                MessageBox.Show(
+                    $"These files no longer exist:\n\n{string.Join("\n", missing.Select(Path.GetFileName))}",
+                    "Missing Files", MessageBoxButton.OK, MessageBoxImage.Warning);
                 return;
             }
 
@@ -1050,13 +1210,17 @@ namespace TestApp
                 }
             }
 
-            var baseNoExt = Path.GetFileNameWithoutExtension(cmpBaselinePath);
-            var curNoExt = Path.GetFileNameWithoutExtension(cmpCurrentPath);
+            var baseName = Path.GetFileNameWithoutExtension(paths[0]);
+            var curName = Path.GetFileNameWithoutExtension(paths[1]);
+            string defName = paths.Count == 2
+                ? $"Comparison_{baseName}_vs_{curName}.xlsx"
+                : $"Comparison_{baseName}_vs_{paths.Count - 1}runs.xlsx";
+
             var saveDlg = new SaveFileDialog
             {
                 Title = "Save Comparison Report",
                 Filter = "Excel Workbook (*.xlsx)|*.xlsx",
-                FileName = $"Comparison_{baseNoExt}_vs_{curNoExt}.xlsx"
+                FileName = defName
             };
             if (saveDlg.ShowDialog() != true) return;
 
@@ -1064,23 +1228,19 @@ namespace TestApp
                 ? ComparisonFileType.Jtl
                 : ComparisonFileType.Csv;
 
+            var mode = CmpModeSequential.IsChecked == true
+                ? ComparisonMode.Sequential
+                : ComparisonMode.AllVsBaseline;
+
             try
             {
-                RunComparisonProcessor.Compare(
-                    cmpBaselinePath,
-                    cmpCurrentPath,
-                    saveDlg.FileName,
-                    fileType,
-                    slaMs);
-
-                MessageBox.Show(
-                    $"Comparison report saved to:\n{saveDlg.FileName}",
+                RunComparisonProcessor.Compare(paths, saveDlg.FileName, fileType, slaMs, mode);
+                MessageBox.Show($"Comparison report saved to:\n{saveDlg.FileName}",
                     "Done", MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
-                MessageBox.Show(
-                    $"Comparison failed:\n\n{ex.Message}",
+                MessageBox.Show($"Comparison failed:\n\n{ex.Message}",
                     "Error", MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
