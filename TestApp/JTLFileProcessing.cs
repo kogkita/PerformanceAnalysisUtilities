@@ -62,7 +62,7 @@ namespace TestApp
             dataName = UniqueSheetName(package, dataName);
             chartName = UniqueSheetName(package, chartName);
 
-            var dataSheet = WriteResultsSheet(package, records, dataName);
+            var dataSheet = WriteResultsSheet(package, records.OrderBy(r => r.TransactionName, StringComparer.Ordinal).ToList(), dataName);
 
             if (includeCharts && records.Count > 0)
             {
