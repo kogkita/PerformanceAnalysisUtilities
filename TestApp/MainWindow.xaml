@@ -162,7 +162,7 @@
         <!-- Dark-themed ComboBox style for nmon dropdowns -->
         <Style x:Key="DarkComboBoxStyle" TargetType="ComboBox">
             <Setter Property="Background" Value="#161B2A"/>
-            <Setter Property="Foreground" Value="#CBD5E1"/>
+            <Setter Property="Foreground" Value="Black"/>
             <Setter Property="BorderBrush" Value="#252D42"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Height" Value="32"/>

@@ -300,13 +300,22 @@ namespace TestApp
             using (var hdr = sheet.Cells[1, 1, 1, totalCols])
             {
                 hdr.Style.Font.Bold = true;
+                hdr.Style.Font.Color.SetColor(System.Drawing.Color.White);
                 hdr.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                hdr.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightBlue);
+                hdr.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.FromArgb(0x1E, 0x40, 0xAF)); // dark blue
             }
 
             int row = 2;
             foreach (var r in records)
             {
+                // Alternating row colour: white / very light grey
+                if (row % 2 == 0)
+                {
+                    sheet.Cells[row, 1, row, totalCols].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    sheet.Cells[row, 1, row, totalCols].Style.Fill.BackgroundColor
+                        .SetColor(System.Drawing.Color.FromArgb(0xF3, 0xF4, 0xF6));
+                }
+
                 sheet.Cells[row, 1].Value = r.TransactionName;
                 sheet.Cells[row, 2].Value = r.Samples;
                 sheet.Cells[row, 3].Value = Math.Round(r.Average / 1000.0, 3);

@@ -219,81 +219,45 @@ namespace TestApp
             double slaThresholdMs,
             ComparisonMode mode)
         {
+            // Build run labels: index 0 = "Run 1 (Baseline)", 1 = "Run 2", 2 = "Run 3" …
+            var runLabels = new List<string>();
+            for (int i = 0; i < runPaths.Count; i++)
+                runLabels.Add(i == 0 ? "Run 1 (Baseline)" : $"Run {i + 1}");
 
-            // Build per-comparison pairs depending on mode
-
-            // Each entry: (leftPath, rightPath, leftRecords, rightRecords, delta, sheetLabel)
-
-            var pairs = new List<(string LeftPath, string RightPath,
-
+            // Each entry: (leftLabel, rightLabel, leftRecords, rightRecords, delta, sheetPrefix)
+            var pairs = new List<(string LeftLabel, string RightLabel,
                                   List<FlatRecord> LeftRec, List<FlatRecord> RightRec,
-
-                                  List<ComparisonRecord> Delta, string Label)>();
-
-
+                                  List<ComparisonRecord> Delta, string SheetPrefix)>();
 
             if (mode == ComparisonMode.AllVsBaseline)
-
             {
-
-                // Baseline vs Run 2, Baseline vs Run 3 …
-
+                // Run 1 (Baseline) vs Run 2, Run 1 (Baseline) vs Run 3 …
                 for (int i = 1; i < runPaths.Count; i++)
-
                 {
-
                     var delta = BuildComparison(allRecords[0], allRecords[i]);
-
-                    string lbl = runPaths.Count == 2 ? "" : $"Run {i + 1} ";
-
-                    pairs.Add((runPaths[0], runPaths[i], allRecords[0], allRecords[i], delta, lbl));
-
+                    pairs.Add((runLabels[0], runLabels[i], allRecords[0], allRecords[i], delta, $"Run {i + 1} vs Run 1 "));
                 }
-
             }
-
             else // Sequential
-
             {
-
-                // Baseline vs Run 2, Run 2 vs Run 3, Run 3 vs Run 4 …
-
+                // Run 1 vs Run 2, Run 2 vs Run 3, Run 3 vs Run 4 …
                 for (int i = 1; i < runPaths.Count; i++)
-
                 {
-
                     var delta = BuildComparison(allRecords[i - 1], allRecords[i]);
-
-                    string lbl = runPaths.Count == 2 ? "" : $"Run {i + 1} ";
-
-                    pairs.Add((runPaths[i - 1], runPaths[i], allRecords[i - 1], allRecords[i], delta, lbl));
-
+                    pairs.Add((runLabels[i - 1], runLabels[i], allRecords[i - 1], allRecords[i], delta, $"Run {i + 1} vs Run {i} "));
                 }
-
             }
-
-
 
             using var package = new ExcelPackage();
 
-
-
             // Summary — one section per pair
-
-            WriteSummarySheet(package, pairs, runPaths, mode, slaThresholdMs);
-
-
+            WriteSummarySheet(package, pairs, runLabels, runPaths, mode, slaThresholdMs);
 
             // Avg + P90 sheets per pair
-
             foreach (var p in pairs)
-
             {
-
-                WriteAvgSheet(package, p.Delta, slaThresholdMs, p.Label, p.LeftPath, p.RightPath);
-
-                WriteP90Sheet(package, p.Delta, slaThresholdMs, p.Label, p.LeftPath, p.RightPath);
-
+                WriteAvgSheet(package, p.Delta, slaThresholdMs, p.SheetPrefix, p.LeftLabel, p.RightLabel);
+                WriteP90Sheet(package, p.Delta, slaThresholdMs, p.SheetPrefix, p.LeftLabel, p.RightLabel);
             }
 
 
@@ -596,8 +560,9 @@ namespace TestApp
 
         private static void WriteSummarySheet(
             ExcelPackage pkg,
-            IList<(string LeftPath, string RightPath, List<FlatRecord> LeftRec, List<FlatRecord> RightRec, List<ComparisonRecord> Delta, string Label)> pairs,
-            IList<string> allPaths,
+            IList<(string LeftLabel, string RightLabel, List<FlatRecord> LeftRec, List<FlatRecord> RightRec, List<ComparisonRecord> Delta, string SheetPrefix)> pairs,
+            IList<string> runLabels,
+            IList<string> runPaths,
             ComparisonMode mode,
             double slaMs)
         {
@@ -608,24 +573,22 @@ namespace TestApp
             ws.Cells[1, 1].Style.Font.Size = 16;
             ws.Cells[1, 1].Style.Font.Color.SetColor(ClrHdrFill);
 
-            SetMeta(ws, 2, "Baseline", Path.GetFileName(allPaths[0]));
-            for (int i = 1; i < allPaths.Count; i++)
-                SetMeta(ws, 2 + i, $"Run {i + 1}", Path.GetFileName(allPaths[i]));
+            // Show "Run 1 (Baseline)   filename.csv" etc.
+            for (int i = 0; i < runLabels.Count; i++)
+                SetMeta(ws, 2 + i, runLabels[i], Path.GetFileName(runPaths[i]));
 
-            int genRow = allPaths.Count + 2;
+            int genRow = runLabels.Count + 2;
             SetMeta(ws, genRow, "Generated", DateTime.Now.ToString("yyyy-MM-dd HH:mm"));
             SetMeta(ws, genRow + 1, "Mode", mode == ComparisonMode.Sequential
-                ? "Sequential — each run vs previous (Run2 vs Baseline, Run3 vs Run2 …)"
-                : "Baseline vs each run (Baseline vs Run2, Baseline vs Run3 …)");
+                ? "Sequential — each run vs previous (Run 2 vs Run 1, Run 3 vs Run 2 …)"
+                : "All vs Baseline (Run 2 vs Run 1, Run 3 vs Run 1 …)");
             if (slaMs > 0) SetMeta(ws, genRow + 2, "SLA Threshold", $"{slaMs:0} ms");
 
             int tableRow = genRow + (slaMs > 0 ? 3 : 2) + 2;
 
             foreach (var pair in pairs)
             {
-                string leftName = Path.GetFileNameWithoutExtension(pair.LeftPath);
-                string rightName = Path.GetFileNameWithoutExtension(pair.RightPath);
-                tableRow = WriteSummarySection(ws, pair.Delta, $"{leftName}  →  {rightName}", tableRow, slaMs);
+                tableRow = WriteSummarySection(ws, pair.Delta, $"{pair.LeftLabel}  →  {pair.RightLabel}", tableRow, slaMs);
                 tableRow += 2;
             }
 
@@ -711,17 +674,17 @@ namespace TestApp
 
         private static void WriteAvgSheet(
             ExcelPackage pkg, List<ComparisonRecord> rows, double slaMs,
-            string prefix = "", string leftPath = "", string rightPath = "")
+            string prefix = "", string leftLabel = "", string rightLabel = "")
         {
-            // Sort: matched records by delta descending, then one-sided records at the bottom
+            // Sort: A-Z by transaction name; one-sided records at the bottom
             var sorted = rows
                 .OrderBy(r => r.OnlyInBaseline || r.OnlyInCurrent ? 1 : 0)
-                .ThenByDescending(r => BothPresent(r) ? r.DeltaAvgPct : double.MinValue)
+                .ThenBy(r => r.TransactionName, StringComparer.Ordinal)
                 .ToList();
 
             var ws = pkg.Workbook.Worksheets.Add($"{prefix}Avg Comparison");
-            string leftLbl = string.IsNullOrEmpty(leftPath) ? "Baseline" : Path.GetFileNameWithoutExtension(leftPath);
-            string rightLbl = string.IsNullOrEmpty(rightPath) ? "Current" : Path.GetFileNameWithoutExtension(rightPath);
+            string leftLbl = string.IsNullOrEmpty(leftLabel) ? "Baseline" : leftLabel;
+            string rightLbl = string.IsNullOrEmpty(rightLabel) ? "Current" : rightLabel;
 
             var hdrs = BuildHdrList(
                 "Transaction", "Status",
@@ -833,17 +796,17 @@ namespace TestApp
 
         private static void WriteP90Sheet(
             ExcelPackage pkg, List<ComparisonRecord> rows, double slaMs,
-            string prefix = "", string leftPath = "", string rightPath = "")
+            string prefix = "", string leftLabel = "", string rightLabel = "")
         {
-            // Sort: matched records by delta descending, then one-sided records at the bottom
+            // Sort: A-Z by transaction name; one-sided records at the bottom
             var sorted = rows
                 .OrderBy(r => r.OnlyInBaseline || r.OnlyInCurrent ? 1 : 0)
-                .ThenByDescending(r => BothPresent(r) ? r.DeltaP90Pct : double.MinValue)
+                .ThenBy(r => r.TransactionName, StringComparer.Ordinal)
                 .ToList();
 
             var ws = pkg.Workbook.Worksheets.Add($"{prefix}P90 Comparison");
-            string leftLbl = string.IsNullOrEmpty(leftPath) ? "Baseline" : Path.GetFileNameWithoutExtension(leftPath);
-            string rightLbl = string.IsNullOrEmpty(rightPath) ? "Current" : Path.GetFileNameWithoutExtension(rightPath);
+            string leftLbl = string.IsNullOrEmpty(leftLabel) ? "Baseline" : leftLabel;
+            string rightLbl = string.IsNullOrEmpty(rightLabel) ? "Current" : rightLabel;
 
             var hdrs = BuildHdrList(
                 "Transaction", "Status",

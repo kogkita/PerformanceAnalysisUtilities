@@ -315,15 +315,25 @@ namespace TestApp
             using (var range = sheet.Cells[1, 1, 1, col - 1])
             {
                 range.Style.Font.Bold = true;
+                range.Style.Font.Color.SetColor(Color.White);
                 range.Style.Fill.PatternType = ExcelFillStyle.Solid;
-                range.Style.Fill.BackgroundColor.SetColor(Color.LightBlue);
+                range.Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0x1E, 0x40, 0xAF)); // dark blue
             }
 
             // ── Data rows ─────────────────────────────────────────────────────
+            int rowWidth = 4 + percentileHeaders.Count + 3; // Name + Samples + Avg + Med + percentiles + Min + Max + Err
             int row = 2;
             foreach (var r in records)
             {
                 col = 1;
+
+                // Alternating row colour: white / very light grey
+                if (row % 2 == 0)
+                {
+                    sheet.Cells[row, 1, row, rowWidth].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    sheet.Cells[row, 1, row, rowWidth].Style.Fill.BackgroundColor
+                        .SetColor(Color.FromArgb(0xF3, 0xF4, 0xF6));
+                }
 
                 sheet.Cells[row, col++].Value = r.TransactionName;
                 sheet.Cells[row, col++].Value = r.Samples;

@@ -1231,12 +1231,9 @@ namespace TestApp
 
         private void CmpAddRun_Click(object sender, RoutedEventArgs e)
         {
-            // Add a new empty slot at the end
+            // Add a new empty slot at the end — user browses or drags manually
             cmpRunFiles.Add(string.Empty);
             CmpRebuildRows();
-
-            // Immediately open browse for the new slot
-            CmpBrowseRow(cmpRunFiles.Count - 1);
         }
 
         // ── Run ──────────────────────────────────────────────────────────────
