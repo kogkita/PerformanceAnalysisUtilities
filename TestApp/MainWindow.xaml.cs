@@ -17,13 +17,76 @@ namespace TestApp
         private readonly List<string> jtlSelectedFiles = new();
         private Button? activeNavButton;
 
+        private bool _isManuallyMaximized = false;
+
         public MainWindow()
         {
             InitializeComponent();
             activeNavButton = NavConvert;
-            // Populate BLG counter preview on startup — the radio is pre-checked so
-            // the Checked event never fires until the user actually clicks it.
-            Loaded += (_, _) => UpdateBLGUI();
+            Loaded += (_, _) =>
+            {
+                UpdateBLGUI();
+                _isManuallyMaximized = true;
+                ApplyMaximizedLayout();
+            };
+        }
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool GetWindowRect(IntPtr hwnd, out RECT lpRect);
+
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        private struct RECT { public int Left, Top, Right, Bottom; }
+
+        private void ApplyMaximizedLayout()
+        {
+            // Get the real working area in physical pixels via SystemParameters
+            // then convert to WPF device-independent units using DPI scale
+            var source = PresentationSource.FromVisual(this);
+            double dpiX = 1.0, dpiY = 1.0;
+            if (source?.CompositionTarget != null)
+            {
+                dpiX = source.CompositionTarget.TransformFromDevice.M11;
+                dpiY = source.CompositionTarget.TransformFromDevice.M22;
+            }
+
+            var area = SystemParameters.WorkArea;
+
+            // Apply position and size manually — no WindowState.Maximized so no resize border overhang
+            WindowState = WindowState.Normal;
+            Left = area.Left;
+            Top = area.Top;
+            Width = area.Width;
+            Height = area.Height;
+
+            MaxWidth = area.Width;
+            MaxHeight = area.Height;
+
+            RootBorder.Margin = new Thickness(0);
+            RootBorder.CornerRadius = new CornerRadius(0);
+            RootBorder.BorderThickness = new Thickness(0);
+            MaxRestoreBtn.Content = "\uE923";
+            MaxRestoreBtn.ToolTip = "Restore";
+        }
+
+        private void ApplyRestoredLayout()
+        {
+            MaxWidth = double.PositiveInfinity;
+            MaxHeight = double.PositiveInfinity;
+            Width = 1280;
+            Height = 720;
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            var area = SystemParameters.WorkArea;
+            Left = area.Left + (area.Width - 1280) / 2;
+            Top = area.Top + (area.Height - 720) / 2;
+
+            RootBorder.Margin = new Thickness(0);
+            RootBorder.CornerRadius = new CornerRadius(12);
+            RootBorder.BorderThickness = new Thickness(1);
+            MaxRestoreBtn.Content = "\uE922";
+            MaxRestoreBtn.ToolTip = "Maximize";
         }
 
         // ── Custom title bar ─────────────────────────────────
@@ -47,15 +110,15 @@ namespace TestApp
 
         private void ToggleMaximize()
         {
-            if (WindowState == WindowState.Maximized)
+            if (_isManuallyMaximized)
             {
-                WindowState = WindowState.Normal;
-                MaxRestoreBtn.Content = "\uE922";
+                _isManuallyMaximized = false;
+                ApplyRestoredLayout();
             }
             else
             {
-                WindowState = WindowState.Maximized;
-                MaxRestoreBtn.Content = "\uE923";
+                _isManuallyMaximized = true;
+                ApplyMaximizedLayout();
             }
         }
 
@@ -612,6 +675,10 @@ namespace TestApp
 
             RefreshBLGCommandPreview();
             RefreshBLGCounterPreview();
+
+            // Keep server label inputs in sync with file list
+            if (BLGProduceGraphsCheckbox?.IsChecked == true)
+                RebuildBLGServerLabelInputs();
         }
 
         private BlgServerType SelectedBlgServerType =>
@@ -640,6 +707,71 @@ namespace TestApp
 
         private void BLGServerType_Changed(object sender, RoutedEventArgs e)
             => UpdateBLGUI();
+
+        private void BLGProduceGraphs_Changed(object sender, RoutedEventArgs e)
+        {
+            bool show = BLGProduceGraphsCheckbox.IsChecked == true;
+            BLGServerLabelPanel.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+            if (show) RebuildBLGServerLabelInputs();
+        }
+
+        private void RebuildBLGServerLabelInputs()
+        {
+            BLGServerLabelInputs.Children.Clear();
+            foreach (var path in blgSelectedFiles)
+            {
+                var row = new Grid { Margin = new Thickness(0, 4, 0, 0) };
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(200) });
+                row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+                var lbl = new TextBlock
+                {
+                    Text = System.IO.Path.GetFileNameWithoutExtension(path),
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#8B93A5")),
+                    FontSize = 12,
+                    FontFamily = new FontFamily("Consolas, Segoe UI Mono, Segoe UI"),
+                    VerticalAlignment = VerticalAlignment.Center,
+                    TextTrimming = TextTrimming.CharacterEllipsis,
+                    ToolTip = path
+                };
+                Grid.SetColumn(lbl, 0);
+
+                var box = new TextBox
+                {
+                    Tag = path,
+                    ToolTip = $"Label for {System.IO.Path.GetFileNameWithoutExtension(path)}",
+                    Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F1117")),
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E2E8F0")),
+                    BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A2F3E")),
+                    CaretBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E2E8F0")),
+                    FontSize = 12,
+                    FontFamily = new FontFamily("Segoe UI Variable, Segoe UI"),
+                    Height = 30,
+                    Padding = new Thickness(8, 0, 8, 0),
+                    VerticalContentAlignment = VerticalAlignment.Center,
+                    Margin = new Thickness(10, 0, 0, 0)
+                };
+                Grid.SetColumn(box, 1);
+
+                row.Children.Add(lbl);
+                row.Children.Add(box);
+                BLGServerLabelInputs.Children.Add(row);
+            }
+        }
+
+        private List<string> GetBLGServerLabels()
+        {
+            var labels = new List<string>();
+            foreach (var child in BLGServerLabelInputs.Children)
+            {
+                if (child is Grid row)
+                {
+                    var box = row.Children.OfType<TextBox>().FirstOrDefault();
+                    labels.Add(box?.Text?.Trim() ?? "");
+                }
+            }
+            return labels;
+        }
 
         private void BLGCounterFileBrowse_Click(object sender, RoutedEventArgs e)
         {
@@ -712,6 +844,8 @@ namespace TestApp
                 return;
             }
 
+            bool produceGraphs = BLGProduceGraphsCheckbox.IsChecked == true;
+
             ShowLogPanel(BLGLogPanel, BLGProgress, BLGLog);
             LogInfo(BLGLog, $"Converting {blgSelectedFiles.Count} file(s)…");
             BLGStatusLabel.Text = $"Converting {blgSelectedFiles.Count} file(s)…";
@@ -720,10 +854,11 @@ namespace TestApp
             var filesToProcess = blgSelectedFiles.ToList();
             var serverType = SelectedBlgServerType;
             var customCf = blgCustomCounterFile;
+            var serverLabels = produceGraphs ? GetBLGServerLabels() : new List<string>();
 
             System.Threading.Tasks.Task.Run(() =>
             {
-                var succeeded = new List<string>();
+                var succeeded = new List<string>();  // CSV paths
                 var errors = new List<string>();
 
                 foreach (var blgPath in filesToProcess)
@@ -746,14 +881,35 @@ namespace TestApp
                     }
                 }
 
+                // ── Produce graphs if requested and at least one CSV was made ──
+                if (produceGraphs && succeeded.Count > 0)
+                {
+                    Dispatcher.Invoke(() => LogMsg(BLGLog, "Generating Excel charts…", "#60A5FA"));
+
+                    try
+                    {
+                        // Save graphs workbook alongside the first CSV
+                        string outDir = System.IO.Path.GetDirectoryName(succeeded[0])!;
+                        string graphOut = System.IO.Path.Combine(outDir, "BLG_Graphs.xlsx");
+
+                        BLGGraphProducer.ProduceGraphs(succeeded, graphOut, serverLabels);
+                        Dispatcher.Invoke(() => LogMsg(BLGLog, $"✓ Charts saved → {System.IO.Path.GetFileName(graphOut)}"));
+                    }
+                    catch (Exception ex)
+                    {
+                        Dispatcher.Invoke(() => LogError(BLGLog, $"Graph generation failed: {ex.Message}"));
+                    }
+                }
+
                 Dispatcher.Invoke(() =>
                 {
                     HideProgress(BLGProgress);
                     if (errors.Count == 0)
                     {
-                        BLGStatusLabel.Text = $"Done — {succeeded.Count} CSV file(s) created.";
+                        string suffix = produceGraphs && succeeded.Count > 0 ? " + charts" : "";
+                        BLGStatusLabel.Text = $"Done — {succeeded.Count} CSV file(s) created{suffix}.";
                         BLGStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
-                        LogSuccess(BLGLog, $"Done — {succeeded.Count} CSV file(s) created successfully.");
+                        LogSuccess(BLGLog, $"Done — {succeeded.Count} CSV file(s) created successfully{suffix}.");
                     }
                     else
                     {
