@@ -188,6 +188,18 @@
             </Setter>
         </Style>
 
+        <!-- Global dark tooltip style -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#1E2338"/>
+            <Setter Property="Foreground" Value="#CBD5E1"/>
+            <Setter Property="BorderBrush" Value="#3D4D70"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="12,10"/>
+            <Setter Property="FontFamily" Value="Segoe UI Variable, Segoe UI"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="HasDropShadow" Value="True"/>
+        </Style>
+
     </Window.Resources>
 
     <!-- Outer border gives Win11 rounded corners + shadow -->
@@ -1122,13 +1134,21 @@
                             <Grid Margin="36,28,36,28">
                                 <Grid.RowDefinitions>
                                     <RowDefinition Height="Auto"/>
+                                    <!-- heading -->
                                     <RowDefinition Height="Auto"/>
+                                    <!-- browse row -->
                                     <RowDefinition Height="Auto"/>
+                                    <!-- file list -->
                                     <RowDefinition Height="Auto"/>
+                                    <!-- options -->
                                     <RowDefinition Height="Auto"/>
+                                    <!-- drop zone -->
                                     <RowDefinition Height="Auto"/>
+                                    <!-- log panel -->
+                                    <RowDefinition Height="*"/>
+                                    <!-- spacer -->
                                     <RowDefinition Height="Auto"/>
-                                    <RowDefinition Height="Auto" MaxHeight="150"/>
+                                    <!-- run button -->
                                 </Grid.RowDefinitions>
 
                                 <!-- Heading -->
@@ -1137,13 +1157,13 @@
                                            FontSize="21" FontWeight="SemiBold"
                                            Foreground="#E2E8F0"
                                            FontFamily="Segoe UI Variable, Segoe UI"/>
-                                    <TextBlock Text="Analyse NMON files using the nmon_analyser_v69 Excel macro engine"
-                                           FontSize="13" Foreground="#4A5568"
+                                    <TextBlock Text="Parse .nmon files and export formatted Excel workbooks with charts — no external tools required."
+                                           FontSize="12.5" Foreground="#4A5568"
                                            FontFamily="Segoe UI Variable, Segoe UI"
-                                           Margin="0,4,0,0"/>
+                                           Margin="0,4,0,0" TextWrapping="Wrap"/>
                                 </StackPanel>
 
-                                <!-- File selection row -->
+                                <!-- Browse row -->
                                 <Grid Grid.Row="1" Margin="0,0,0,10">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*"/>
@@ -1181,125 +1201,23 @@
                                     </ScrollViewer>
                                 </Border>
 
-                                <!-- ── Analyser Options ── -->
+                                <!-- Options -->
                                 <Border Grid.Row="3" Background="#0D1020" BorderBrush="#1A2030"
-                                    BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,0,0,10">
+                                    BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,0,0,12">
                                     <StackPanel>
-                                        <TextBlock Text="ANALYSER OPTIONS"
+                                        <TextBlock Text="OUTPUT OPTIONS"
                                                FontSize="10" FontWeight="Bold" Foreground="#3D4560"
                                                FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,10"/>
                                         <Grid>
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="24"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
-                                            <Grid.RowDefinitions>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                                <RowDefinition Height="Auto"/>
-                                            </Grid.RowDefinitions>
 
-                                            <!-- GRAPHS -->
-                                            <StackPanel Grid.Column="0" Grid.Row="0" Margin="0,0,12,10">
-                                                <TextBlock Text="GRAPHS" Foreground="#8B93A5" FontSize="11"
-                                                       FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,4"/>
-                                                <ComboBox x:Name="NmonGraphsCombo"
-                                                      Style="{StaticResource DarkComboBoxStyle}">
-                                                    <ComboBoxItem Content="ALL – CHARTS" IsSelected="True" Tag="ALL|CHARTS"/>
-                                                    <ComboBoxItem Content="ALL – PICTURES" Tag="ALL|PICTURES"/>
-                                                    <ComboBoxItem Content="LIST – CHARTS" Tag="LIST|CHARTS"/>
-                                                    <ComboBoxItem Content="LIST – PICTURES" Tag="LIST|PICTURES"/>
-                                                </ComboBox>
-                                            </StackPanel>
-
-                                            <!-- MERGE -->
-                                            <StackPanel Grid.Column="1" Grid.Row="0" Margin="0,0,12,10">
-                                                <TextBlock Text="MERGE" Foreground="#8B93A5" FontSize="11"
-                                                       FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,4"/>
-                                                <ComboBox x:Name="NmonMergeCombo"
-                                                      Style="{StaticResource DarkComboBoxStyle}">
-                                                    <ComboBoxItem Content="NO" IsSelected="True"/>
-                                                    <ComboBoxItem Content="YES"/>
-                                                    <ComboBoxItem Content="TOP"/>
-                                                    <ComboBoxItem Content="KEEP"/>
-                                                    <ComboBoxItem Content="ONLY"/>
-                                                </ComboBox>
-                                            </StackPanel>
-
-                                            <!-- INTERVALS -->
-                                            <StackPanel Grid.Column="2" Grid.Row="0" Margin="0,0,0,10">
-                                                <TextBlock Text="INTERVALS (first / last)" Foreground="#8B93A5" FontSize="11"
-                                                       FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,4"/>
-                                                <Grid>
-                                                    <Grid.ColumnDefinitions>
-                                                        <ColumnDefinition Width="*"/>
-                                                        <ColumnDefinition Width="8"/>
-                                                        <ColumnDefinition Width="*"/>
-                                                    </Grid.ColumnDefinitions>
-                                                    <TextBox x:Name="NmonIntervalFirst" Grid.Column="0"
-                                                         Text="1" Background="#161B2A" Foreground="#CBD5E1"
-                                                         BorderBrush="#252D42" FontSize="12" Height="32" Padding="8,0"/>
-                                                    <TextBox x:Name="NmonIntervalLast" Grid.Column="2"
-                                                         Text="999999" Background="#161B2A" Foreground="#CBD5E1"
-                                                         BorderBrush="#252D42" FontSize="12" Height="32" Padding="8,0"/>
-                                                </Grid>
-                                            </StackPanel>
-
-                                            <!-- Checkboxes row -->
-                                            <WrapPanel Grid.Column="0" Grid.Row="1" Grid.ColumnSpan="3" Margin="0,0,0,4">
-                                                <CheckBox x:Name="NmonEssChk" IsChecked="True" Margin="0,0,20,6"
-                                                      Foreground="#8B93A5" FontSize="12"
-                                                      FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand">
-                                                    <TextBlock><Run Text="ESS" Foreground="#8B93A5"/>
-                                                <Run Text="  additional ESS analysis" Foreground="#3D4560" FontSize="11"/></TextBlock>
-                                                </CheckBox>
-                                                <CheckBox x:Name="NmonScatterChk" IsChecked="True" Margin="0,0,20,6"
-                                                      Foreground="#8B93A5" FontSize="12"
-                                                      FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand">
-                                                    <TextBlock><Run Text="SCATTER" Foreground="#8B93A5"/>
-                                                <Run Text="  TOP CPU% by PID chart" Foreground="#3D4560" FontSize="11"/></TextBlock>
-                                                </CheckBox>
-                                                <CheckBox x:Name="NmonBigdataChk" IsChecked="True" Margin="0,0,20,6"
-                                                      Foreground="#8B93A5" FontSize="12"
-                                                      FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand">
-                                                    <TextBlock><Run Text="BIGDATA" Foreground="#8B93A5"/>
-                                                <Run Text="  support &gt;1M rows" Foreground="#3D4560" FontSize="11"/></TextBlock>
-                                                </CheckBox>
-                                                <CheckBox x:Name="NmonLinuxCpuChk" IsChecked="False" Margin="0,0,20,6"
-                                                      Foreground="#8B93A5" FontSize="12"
-                                                      FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand">
-                                                    <TextBlock><Run Text="SHOWLINUXCPUUTIL" Foreground="#8B93A5"/>
-                                                <Run Text="  all CPUUTILnnn sheets" Foreground="#3D4560" FontSize="11"/></TextBlock>
-                                                </CheckBox>
-                                                <CheckBox x:Name="NmonReorderChk" IsChecked="True" Margin="0,0,20,6"
-                                                      Foreground="#8B93A5" FontSize="12"
-                                                      FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand">
-                                                    <TextBlock><Run Text="REORDER" Foreground="#8B93A5"/>
-                                                <Run Text="  reorder sheets" Foreground="#3D4560" FontSize="11"/></TextBlock>
-                                                </CheckBox>
-                                                <CheckBox x:Name="NmonSortDefaultChk" IsChecked="True" Margin="0,0,0,6"
-                                                      Foreground="#8B93A5" FontSize="12"
-                                                      FontFamily="Segoe UI Variable, Segoe UI" Cursor="Hand">
-                                                    <TextBlock><Run Text="SORTDEFAULT" Foreground="#8B93A5"/>
-                                                <Run Text="  sort default graphs" Foreground="#3D4560" FontSize="11"/></TextBlock>
-                                                </CheckBox>
-                                            </WrapPanel>
-
-                                            <!-- LIST (sheet filter) -->
-                                            <StackPanel Grid.Column="0" Grid.Row="2" Grid.ColumnSpan="2" Margin="0,4,12,0">
-                                                <TextBlock Text="LIST  (comma-separated sheet names, used when GRAPHS = LIST)"
-                                                       Foreground="#8B93A5" FontSize="11"
-                                                       FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,4"/>
-                                                <TextBox x:Name="NmonListBox"
-                                                     Text="CPU_ALL,DISKBUSY,ESS*,EMC*,FAST*,LPAR,MEM*,NET,PAGE,PROC,TOP"
-                                                     Background="#161B2A" Foreground="#CBD5E1"
-                                                     BorderBrush="#252D42" FontSize="11" Height="32" Padding="8,0"/>
-                                            </StackPanel>
-
-                                            <!-- OUTDIR -->
-                                            <StackPanel Grid.Column="2" Grid.Row="2" Margin="0,4,0,0">
-                                                <TextBlock Text="OUTPUT DIR  (blank = same as input)"
+                                            <!-- Output directory -->
+                                            <StackPanel Grid.Column="0">
+                                                <TextBlock Text="OUTPUT DIRECTORY  (blank = same as first input file)"
                                                        Foreground="#8B93A5" FontSize="11"
                                                        FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,4"/>
                                                 <Grid>
@@ -1309,7 +1227,8 @@
                                                     </Grid.ColumnDefinitions>
                                                     <TextBox x:Name="NmonOutDirBox" Grid.Column="0"
                                                          Background="#161B2A" Foreground="#CBD5E1"
-                                                         BorderBrush="#252D42" FontSize="11" Height="32" Padding="8,0"/>
+                                                         BorderBrush="#252D42" FontSize="11" Height="32" Padding="8,0"
+                                                         VerticalContentAlignment="Center"/>
                                                     <Button Grid.Column="1" Content="…"
                                                         Style="{StaticResource ActionButtonStyle}"
                                                         Background="#374151" Foreground="#9CA3AF"
@@ -1317,60 +1236,112 @@
                                                         Click="NmonOutDirBrowse_Click"/>
                                                 </Grid>
                                             </StackPanel>
-                                        </Grid>
-                                    </StackPanel>
-                                </Border>
 
-                                <!-- XLSM path -->
-                                <Border Grid.Row="4" Background="#0D1020" BorderBrush="#1A2030"
-                                    BorderThickness="1" CornerRadius="8" Padding="16,12" Margin="0,0,0,10">
-                                    <StackPanel>
-                                        <TextBlock Text="NMON ANALYSER XLSM PATH"
-                                               FontSize="10" FontWeight="Bold" Foreground="#3D4560"
-                                               FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,8"/>
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="Auto"/>
-                                            </Grid.ColumnDefinitions>
-                                            <TextBox x:Name="NmonXlsmPathBox" Grid.Column="0"
-                                                 Background="#161B2A" Foreground="#CBD5E1"
-                                                 BorderBrush="#252D42" FontSize="12" Height="32" Padding="8,0"
-                                                 ToolTip="Path to nmon_analyser_v69_2.xlsm"/>
-                                            <Button Grid.Column="1" Content="Browse…"
-                                                Style="{StaticResource ActionButtonStyle}"
-                                                Background="#374151" Foreground="#9CA3AF"
-                                                FontSize="12" Width="90" Height="32" Margin="8,0,0,0"
-                                                Click="NmonXlsmBrowse_Click"/>
+                                            <!-- Interval filter -->
+                                            <StackPanel Grid.Column="2">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                    <TextBlock Text="INTERVAL RANGE  (first / last — blank = all)"
+                                                           Foreground="#8B93A5" FontSize="11"
+                                                           FontFamily="Segoe UI Variable, Segoe UI"
+                                                           VerticalAlignment="Center"/>
+                                                    <Border Width="16" Height="16" CornerRadius="8"
+                                                            Background="#1E2640" Margin="6,0,0,0"
+                                                            VerticalAlignment="Center" Cursor="Help">
+                                                        <Border.ToolTip>
+                                                            <ToolTip MaxWidth="320">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="What is an interval?"
+                                                                               FontWeight="SemiBold" FontSize="12"
+                                                                               Foreground="#E2E8F0" Margin="0,0,0,6"/>
+                                                                    <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#CBD5E1"
+                                                                               Text="nmon captures a snapshot of system metrics at a fixed frequency (e.g. every 15 seconds). Each snapshot is one interval — numbered T0001, T0002, and so on."/>
+                                                                    <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#CBD5E1"
+                                                                               Margin="0,6,0,0"
+                                                                               Text="The total duration depends on how nmon was configured. For example, 1920 snapshots at 15s each = 8 hours of data."/>
+                                                                    <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#CBD5E1"
+                                                                               Margin="0,6,0,0"
+                                                                               Text="Use this range to analyse only a portion of the file. Leave both blank to include all intervals."/>
+                                                                    <TextBlock TextWrapping="Wrap" FontSize="11" Foreground="#60A5FA"
+                                                                               Margin="0,8,0,0"
+                                                                               Text="Example: enter 1 and 240 to analyse the first hour of a 15-second-interval file (240 × 15s = 1h)."/>
+                                                                </StackPanel>
+                                                            </ToolTip>
+                                                        </Border.ToolTip>
+                                                        <TextBlock Text="i" FontSize="10" FontWeight="Bold"
+                                                                   Foreground="#60A5FA"
+                                                                   HorizontalAlignment="Center"
+                                                                   VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="16"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <TextBox x:Name="NmonIntervalFirst" Grid.Column="0"
+                                                         Background="#161B2A" Foreground="#CBD5E1"
+                                                         BorderBrush="#252D42" FontSize="12" Height="32"
+                                                         Padding="8,0" VerticalContentAlignment="Center"
+                                                         ToolTip="First interval number e.g. 1"/>
+                                                    <TextBlock Grid.Column="1" Text="–"
+                                                           Foreground="#4A5568" FontSize="14"
+                                                           VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                                    <TextBox x:Name="NmonIntervalLast" Grid.Column="2"
+                                                         Background="#161B2A" Foreground="#CBD5E1"
+                                                         BorderBrush="#252D42" FontSize="12" Height="32"
+                                                         Padding="8,0" VerticalContentAlignment="Center"
+                                                         ToolTip="Last interval number e.g. 100"/>
+                                                </Grid>
+                                            </StackPanel>
                                         </Grid>
-                                        <TextBlock Text="The nmon_analyser_v69_2.xlsm file must be present. Browse to locate it or place it alongside this application."
-                                               FontSize="11" Foreground="#3D4560"
-                                               FontFamily="Segoe UI Variable, Segoe UI"
-                                               TextWrapping="Wrap" Margin="0,6,0,0"/>
                                     </StackPanel>
                                 </Border>
 
                                 <!-- Drop zone -->
-                                <Border Grid.Row="5"
+                                <Border Grid.Row="4"
                                     x:Name="NmonDropZone"
                                     AllowDrop="True"
                                     Drop="NmonFileDropped"
                                     DragEnter="NmonDropZone_DragEnter"
                                     DragLeave="NmonDropZone_DragLeave"
                                     Background="#0D1020" BorderBrush="#1E2640"
-                                    BorderThickness="1.5" CornerRadius="10" MinHeight="80" Margin="0,0,0,10">
-                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,16">
-                                        <TextBlock Text="&#x2B07;" FontSize="24" HorizontalAlignment="Center"
+                                    BorderThickness="1.5" CornerRadius="10" MinHeight="100" Margin="0,0,0,0">
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Margin="0,20">
+                                        <TextBlock Text="&#x2B07;" FontSize="28" HorizontalAlignment="Center"
                                                Margin="0,0,0,8" Foreground="#2D3A5A"/>
                                         <TextBlock Text="Drag &amp; drop .nmon files here"
-                                               FontSize="13" FontWeight="SemiBold" Foreground="#3D4D70"
+                                               FontSize="14" FontWeight="SemiBold" Foreground="#3D4D70"
                                                HorizontalAlignment="Center"
+                                               FontFamily="Segoe UI Variable, Segoe UI"/>
+                                        <TextBlock Text="Accepts .nmon files from AIX, Linux and Power systems"
+                                               FontSize="11.5" Foreground="#252D42"
+                                               HorizontalAlignment="Center" Margin="0,5,0,0"
                                                FontFamily="Segoe UI Variable, Segoe UI"/>
                                     </StackPanel>
                                 </Border>
 
-                                <!-- Run button row -->
-                                <Grid Grid.Row="6" Margin="0,4,0,0">
+                                <!-- Log panel -->
+                                <Border Grid.Row="5" Background="#0A0D18" BorderBrush="#1A2030"
+                                        BorderThickness="1" CornerRadius="6" Margin="0,10,0,0"
+                                        Padding="10,8" Visibility="Collapsed"
+                                        x:Name="NmonLogPanel">
+                                    <StackPanel>
+                                        <ProgressBar x:Name="NmonProgress" Height="3"
+                                                     Background="#1A2030" Foreground="#2563EB"
+                                                     BorderThickness="0" IsIndeterminate="True"
+                                                     Margin="0,0,0,6"/>
+                                        <ScrollViewer MaxHeight="120" VerticalScrollBarVisibility="Auto">
+                                            <TextBlock x:Name="NmonLog" Text=""
+                                                       Foreground="#8B93A5" FontSize="11.5"
+                                                       FontFamily="Consolas, Segoe UI Mono, Segoe UI"
+                                                       TextWrapping="Wrap"/>
+                                        </ScrollViewer>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Run button -->
+                                <Grid Grid.Row="7" Margin="0,16,0,0">
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="Auto"/>
                                         <ColumnDefinition Width="*"/>
@@ -1390,25 +1361,6 @@
                                            VerticalAlignment="Center" Margin="16,0,0,0"
                                            TextWrapping="Wrap"/>
                                 </Grid>
-
-                                <!-- Log panel -->
-                                <Border Grid.Row="7" Background="#0A0D18" BorderBrush="#1A2030"
-                                        BorderThickness="1" CornerRadius="6" Margin="0,10,0,0"
-                                        Padding="10,8" Visibility="Collapsed"
-                                        x:Name="NmonLogPanel">
-                                    <StackPanel>
-                                        <ProgressBar x:Name="NmonProgress" Height="3"
-                                                     Background="#1A2030" Foreground="#2563EB"
-                                                     BorderThickness="0" IsIndeterminate="True"
-                                                     Margin="0,0,0,6"/>
-                                        <ScrollViewer MaxHeight="100" VerticalScrollBarVisibility="Auto">
-                                            <TextBlock x:Name="NmonLog" Text=""
-                                                       Foreground="#8B93A5" FontSize="11.5"
-                                                       FontFamily="Consolas, Segoe UI Mono, Segoe UI"
-                                                       TextWrapping="Wrap"/>
-                                        </ScrollViewer>
-                                    </StackPanel>
-                                </Border>
 
                             </Grid>
                         </ScrollViewer>

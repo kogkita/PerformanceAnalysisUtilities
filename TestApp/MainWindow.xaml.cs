@@ -1024,7 +1024,6 @@ namespace TestApp
 
         private void NmonOutDirBrowse_Click(object sender, RoutedEventArgs e)
         {
-            // WPF has no native FolderBrowserDialog — use SaveFileDialog pointed at a folder
             var dlg = new Microsoft.Win32.SaveFileDialog
             {
                 Title = "Select output directory (type any filename, only the folder is used)",
@@ -1038,17 +1037,6 @@ namespace TestApp
                 NmonOutDirBox.Text = System.IO.Path.GetDirectoryName(dlg.FileName) ?? string.Empty;
         }
 
-        private void NmonXlsmBrowse_Click(object sender, RoutedEventArgs e)
-        {
-            var dlg = new OpenFileDialog
-            {
-                Title = "Locate nmon_analyser_v69_2.xlsm",
-                Filter = "nmon Analyser (*.xlsm)|*.xlsm|All Files (*.*)|*.*"
-            };
-            if (dlg.ShowDialog() == true)
-                NmonXlsmPathBox.Text = dlg.FileName;
-        }
-
         private void NmonRunAnalysis_Click(object sender, RoutedEventArgs e)
         {
             if (nmonSelectedFiles.Count == 0)
@@ -1058,94 +1046,59 @@ namespace TestApp
                 return;
             }
 
-            // Resolve XLSM path — check box first, then app directory
-            string xlsmPath = NmonXlsmPathBox.Text.Trim();
-            if (string.IsNullOrEmpty(xlsmPath))
+            // Determine output path
+            string outDir = NmonOutDirBox.Text.Trim();
+            if (string.IsNullOrEmpty(outDir))
+                outDir = System.IO.Path.GetDirectoryName(nmonSelectedFiles[0]) ?? "";
+
+            string firstName = System.IO.Path.GetFileNameWithoutExtension(nmonSelectedFiles[0]);
+            string outputPath = System.IO.Path.Combine(outDir,
+                nmonSelectedFiles.Count == 1
+                    ? $"{firstName}_analysis.xlsx"
+                    : $"nmon_analysis_{DateTime.Now:yyyyMMdd_HHmmss}.xlsx");
+
+            var saveDlg = new Microsoft.Win32.SaveFileDialog
             {
-                var appDir = System.IO.Path.GetDirectoryName(
-                    System.Reflection.Assembly.GetExecutingAssembly().Location) ?? "";
-                var candidate = System.IO.Path.Combine(appDir, "nmon_analyser_v69_2.xlsm");
-                if (System.IO.File.Exists(candidate))
-                    xlsmPath = candidate;
-            }
-
-            if (!System.IO.File.Exists(xlsmPath))
-            {
-                MessageBox.Show(
-                    "Cannot find nmon_analyser_v69_2.xlsm.\n\n" +
-                    "Please browse to locate it using the 'Browse…' button, " +
-                    "or place it in the same folder as this application.",
-                    "XLSM Not Found", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            try
-            {
-                // Build options from UI
-                var opts = BuildNmonOptions(xlsmPath);
-
-                ShowLogPanel(NmonLogPanel, NmonProgress, NmonLog);
-                LogInfo(NmonLog, "Running analysis… Excel will open in the background.");
-                NmonStatusLabel.Text = "Running analysis… Excel will open in the background.";
-                NmonStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x60, 0xA5, 0xFA));
-
-                // Run on background thread so UI stays responsive
-                System.Threading.Tasks.Task.Run(() =>
-                {
-                    try
-                    {
-                        NmonAnalyzer.Run(opts);
-                        Dispatcher.Invoke(() =>
-                        {
-                            HideProgress(NmonProgress);
-                            NmonStatusLabel.Text = "Analysis complete. Check the output directory for Excel files.";
-                            NmonStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
-                            string outDir = string.IsNullOrEmpty(opts.OutDir) ? "Same directory as each input file" : opts.OutDir;
-                            LogSuccess(NmonLog, $"Analysis complete — Excel files saved to: {outDir}");
-                        });
-                    }
-                    catch (Exception ex)
-                    {
-                        Dispatcher.Invoke(() =>
-                        {
-                            HideProgress(NmonProgress);
-                            NmonStatusLabel.Text = $"Error: {ex.Message}";
-                            NmonStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
-                            LogError(NmonLog, $"Analysis failed: {ex.Message}");
-                        });
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                LogError(NmonLog, $"Failed to start analysis: {ex.Message}");
-            }
-        }
-
-        private NmonAnalyzerOptions BuildNmonOptions(string xlsmPath)
-        {
-            // Parse GRAPHS combo: "ALL|CHARTS" etc.
-            var graphsTag = ((NmonGraphsCombo.SelectedItem as ComboBoxItem)?.Tag as string ?? "ALL|CHARTS")
-                .Split('|');
-
-            return new NmonAnalyzerOptions
-            {
-                XlsmPath = xlsmPath,
-                NmonFiles = nmonSelectedFiles.ToList(),
-                GraphsScope = graphsTag.Length > 0 ? graphsTag[0] : "ALL",
-                GraphsOutput = graphsTag.Length > 1 ? graphsTag[1] : "CHARTS",
-                Merge = (NmonMergeCombo.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "NO",
-                IntervalFirst = NmonIntervalFirst.Text.Trim(),
-                IntervalLast = NmonIntervalLast.Text.Trim(),
-                Ess = NmonEssChk.IsChecked == true,
-                Scatter = NmonScatterChk.IsChecked == true,
-                BigData = NmonBigdataChk.IsChecked == true,
-                ShowLinuxCpuUtil = NmonLinuxCpuChk.IsChecked == true,
-                Reorder = NmonReorderChk.IsChecked == true,
-                SortDefault = NmonSortDefaultChk.IsChecked == true,
-                List = NmonListBox.Text.Trim(),
-                OutDir = NmonOutDirBox.Text.Trim(),
+                Title = "Save nmon Analysis Workbook",
+                Filter = "Excel Workbook (*.xlsx)|*.xlsx",
+                FileName = System.IO.Path.GetFileName(outputPath),
+                InitialDirectory = outDir
             };
+            if (saveDlg.ShowDialog() != true) return;
+
+            var files = nmonSelectedFiles.ToList();
+
+            ShowLogPanel(NmonLogPanel, NmonProgress, NmonLog);
+            LogInfo(NmonLog, $"Analysing {files.Count} file(s)…");
+            NmonStatusLabel.Text = "Running analysis…";
+            NmonStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x60, 0xA5, 0xFA));
+
+            var progress = new Progress<string>(msg => Dispatcher.Invoke(() => LogMsg(NmonLog, msg, "#60A5FA")));
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                try
+                {
+                    NmonExcelProducer.Produce(files, saveDlg.FileName, progress);
+                    Dispatcher.Invoke(() =>
+                    {
+                        HideProgress(NmonProgress);
+                        NmonStatusLabel.Text = "Analysis complete.";
+                        NmonStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+                        LogSuccess(NmonLog, $"Done — saved to: {saveDlg.FileName}");
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Dispatcher.Invoke(() =>
+                    {
+                        HideProgress(NmonProgress);
+                        NmonStatusLabel.Text = $"Error: {ex.Message}";
+                        NmonStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+                        LogError(NmonLog, $"Analysis failed: {ex.Message}");
+                    });
+                }
+            });
         }
 
         // ── Log panel helpers ─────────────────────────────────
