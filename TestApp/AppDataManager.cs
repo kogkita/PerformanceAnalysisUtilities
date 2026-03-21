@@ -263,6 +263,8 @@ namespace TestApp
 
             // ── Test Run Trends ──────────────────────────────────────────────
             public string TrendsFailWindow   { get; set; } = "3";
+            public bool   TrendsAutoWatch    { get; set; } = false;
+            public int    TrendsWatchIntervalSecs { get; set; } = 60;
 
             // ── Last-used folders (per feature) ──────────────────────────────
             public string LastNmonOutputDir  { get; set; } = "";

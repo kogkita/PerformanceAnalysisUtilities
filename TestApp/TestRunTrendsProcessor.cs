@@ -223,7 +223,7 @@ namespace TestApp
 
                 Write($"Scanning runs folder: {runsFolder}");
 
-                // Find and parse all input Excel files (exclude existing trends file)
+                // Find and parse all input Excel files (exclude trends output and manifest)
                 string trendsFileName = customerName + "_Trends.xlsx";
                 var inputFiles = Directory.GetFiles(runsFolder, "*.xlsx", SearchOption.TopDirectoryOnly)
                     .Where(f => !Path.GetFileName(f).Equals(trendsFileName, StringComparison.OrdinalIgnoreCase))

@@ -1992,7 +1992,7 @@
                                                                    VerticalAlignment="Center"/>
                                                     </Border>
                                                 </StackPanel>
-                                                <TextBox x:Name="ScriptRuntimeBox"
+                                                <TextBox x:Name="ScriptRuntimeBox" TextChanged="ScriptField_Changed"
                                                          Background="#161B2A" Foreground="#CBD5E1"
                                                          BorderBrush="#252D42" FontSize="12" Height="30"
                                                          Padding="8,0" VerticalContentAlignment="Center"
@@ -2002,7 +2002,7 @@
                                                 <TextBlock Text="ARGUMENTS  (optional)"
                                                            Foreground="#6B7A99" FontSize="10" FontWeight="Bold"
                                                            FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,4"/>
-                                                <TextBox x:Name="ScriptArgsBox"
+                                                <TextBox x:Name="ScriptArgsBox" TextChanged="ScriptField_Changed"
                                                          Background="#161B2A" Foreground="#CBD5E1"
                                                          BorderBrush="#252D42" FontSize="12" Height="30"
                                                          Padding="8,0" VerticalContentAlignment="Center"
@@ -2029,7 +2029,7 @@
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="Auto"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBox x:Name="ScriptWorkDirBox" Grid.Column="0"
+                                                    <TextBox x:Name="ScriptWorkDirBox" Grid.Column="0" TextChanged="ScriptField_Changed"
                                                              Background="#161B2A" Foreground="#CBD5E1"
                                                              BorderBrush="#252D42" FontSize="11" Height="30"
                                                              Padding="8,0" VerticalContentAlignment="Center"/>
@@ -2151,6 +2151,7 @@
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="Auto"/>
+                                                <ColumnDefinition Width="Auto"/>
                                                 <ColumnDefinition Width="*"/>
                                             </Grid.ColumnDefinitions>
                                             <Button x:Name="ScriptRunBtn" Grid.Column="0"
@@ -2168,7 +2169,16 @@
                                                     Width="100" Height="42" Margin="10,0,0,0"
                                                     Visibility="Collapsed"
                                                     Click="ScriptStop_Click"/>
-                                            <TextBlock x:Name="ScriptStatusLabel" Grid.Column="2"
+                                            <Button x:Name="ScriptUpdateLibraryBtn" Grid.Column="2"
+                                                    Content="💾 Update Library"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#78350F" Foreground="#FCD34D"
+                                                    FontSize="12" FontWeight="SemiBold"
+                                                    Height="42" Padding="12,0"
+                                                    Visibility="Collapsed" Margin="10,0,0,0"
+                                                    ToolTip="Save changes to this library entry"
+                                                    Click="ScriptUpdateLibrary_Click"/>
+                                            <TextBlock x:Name="ScriptStatusLabel" Grid.Column="3"
                                                        Text=""
                                                        Foreground="#7A8AA0" FontSize="12"
                                                        FontFamily="Segoe UI Variable, Segoe UI"
@@ -2241,6 +2251,14 @@
                                                     Width="24" Height="24" Margin="0,0,4,0"
                                                     ToolTip="Import customer library from file"
                                                     Click="TrendsLibraryImport_Click"/>
+                                            <Button x:Name="TrendsWatchAllBtn"
+                                                    Content="&#x1F441; Watch All"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#60A5FA"
+                                                    FontSize="10" FontWeight="SemiBold"
+                                                    Height="24" Padding="8,0" Margin="0,0,4,0"
+                                                    ToolTip="Start auto-watch for all library customers at once"
+                                                    Click="WatchAllBtn_Click"/>
                                             <Button Content="+ Add"
                                                     x:Name="TrendsLibraryAddBtn"
                                                     Style="{StaticResource ActionButtonStyle}"
@@ -2297,7 +2315,7 @@
                                                     <TextBlock Text="CUSTOMER NAME"
                                                                FontSize="10" FontWeight="Bold" Foreground="#6B7A99"
                                                                FontFamily="Segoe UI Variable, Segoe UI" Margin="0,0,0,4"/>
-                                                    <TextBox x:Name="TrendsCustomerNameBox"
+                                                    <TextBox x:Name="TrendsCustomerNameBox" TextChanged="TrendsField_Changed"
                                                              Background="#161B2A" Foreground="#CBD5E1"
                                                              BorderBrush="#252D42" FontSize="13" Height="34"
                                                              Padding="10,0" VerticalContentAlignment="Center"
@@ -2458,25 +2476,49 @@
                                         </Grid>
                                     </Border>
 
-                                    <!-- Run button -->
-                                    <Grid Grid.Row="2" Margin="0,12,0,0">
-                                        <Grid.ColumnDefinitions>
-                                            <ColumnDefinition Width="Auto"/>
-                                            <ColumnDefinition Width="*"/>
-                                        </Grid.ColumnDefinitions>
-                                        <Button x:Name="TrendsRunBtn" Grid.Column="0"
-                                                Content="&#x1F4C8;  Generate Trends"
-                                                Style="{StaticResource ActionButtonStyle}"
-                                                Background="#2563EB" Foreground="White"
-                                                FontSize="14" FontWeight="SemiBold"
-                                                Width="200" Height="42"
-                                                Click="TrendsRun_Click"/>
-                                        <TextBlock x:Name="TrendsStatusLabel" Grid.Column="1"
+                                    <!-- Run button row -->
+                                    <StackPanel Grid.Row="2" Margin="0,12,0,0">
+
+                                        <!-- Row 1: action buttons -->
+                                        <StackPanel Orientation="Horizontal">
+                                            <Button x:Name="TrendsRunBtn"
+                                                    Content="&#x1F4C8;  Generate Trends"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#2563EB" Foreground="White"
+                                                    FontSize="14" FontWeight="SemiBold"
+                                                    Width="200" Height="42" Click="TrendsRun_Click"/>
+                                            <Button x:Name="TrendsUpdateLibraryBtn"
+                                                    Content="💾 Update Library"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#78350F" Foreground="#FCD34D"
+                                                    FontSize="13" FontWeight="SemiBold"
+                                                    Height="42" Padding="12,0" Margin="10,0,0,0"
+                                                    Visibility="Collapsed"
+                                                    ToolTip="Save changes to this library entry"
+                                                    Click="TrendsUpdateLibrary_Click"/>
+                                            <Button x:Name="TrendsWatchToggleBtn"
+                                                    Content="&#x1F441; Auto-Watch"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#60A5FA"
+                                                    FontSize="13" FontWeight="SemiBold"
+                                                    Height="42" Padding="14,0" Margin="10,0,0,0"
+                                                    ToolTip="Automatically regenerate trends when a new run file appears in the Runs folder"
+                                                    Click="TrendsWatchToggle_Click"/>
+                                        </StackPanel>
+
+                                        <!-- Row 2: status text -->
+                                        <TextBlock x:Name="TrendsStatusLabel"
                                                    Text="" Foreground="#7A8AA0" FontSize="12"
                                                    FontFamily="Segoe UI Variable, Segoe UI"
-                                                   VerticalAlignment="Center" Margin="16,0,0,0"
-                                                   TextWrapping="Wrap"/>
-                                    </Grid>
+                                                   Margin="0,8,0,0" TextWrapping="Wrap"/>
+
+                                        <!-- Row 3: watch scan status -->
+                                        <TextBlock x:Name="TrendsWatchStatusLabel"
+                                                   Text="" Foreground="#4A5F88" FontSize="11"
+                                                   FontFamily="Consolas, Segoe UI Mono, Segoe UI"
+                                                   Margin="0,3,0,0" Visibility="Collapsed"/>
+
+                                    </StackPanel>
                                 </Grid>
                             </Grid>
                         </Grid>

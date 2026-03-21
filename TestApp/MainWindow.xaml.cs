@@ -31,6 +31,7 @@ namespace TestApp
                 LoadLibrary();
                 LoadTrendsLibrary();
                 LoadSettings();
+                InitTrayOnLoad();
                 DarkMessageBox.SetOwner(this);
             };
         }
@@ -1532,8 +1533,16 @@ namespace TestApp
             RefreshLibraryUI();
         }
 
+        private bool _suppressScriptDirtyTracking = false;
+        private ScriptEntry? _activeScriptEntry   = null;
+        private bool         _scriptEntryDirty    = false;
+
         private void LoadLibraryEntry(ScriptEntry entry)
         {
+            _suppressScriptDirtyTracking = true;
+            _activeScriptEntry = entry;
+            _scriptEntryDirty  = false;
+
             SetScriptFile(entry.ScriptPath);
             ScriptRuntimeBox.Text  = entry.Runtime;
             ScriptArgsBox.Text     = entry.Arguments;
@@ -1551,6 +1560,51 @@ namespace TestApp
 
             ScriptStatusLabel.Text = $"Loaded: {entry.Name}";
             ScriptStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x60, 0xA5, 0xFA));
+            ScriptUpdateLibraryBtn.Visibility = Visibility.Collapsed;
+
+            _suppressScriptDirtyTracking = false;
+        }
+
+        private void MarkScriptEntryDirty()
+        {
+            if (_suppressScriptDirtyTracking) return;
+            if (_activeScriptEntry == null) return;
+            if (_scriptEntryDirty) return;
+            _scriptEntryDirty = true;
+            ScriptUpdateLibraryBtn.Visibility = Visibility.Visible;
+            ScriptStatusLabel.Text = $"Unsaved changes — {_activeScriptEntry.Name}";
+            ScriptStatusLabel.Foreground = new SolidColorBrush(
+                (Color)ColorConverter.ConvertFromString("#FBBF24"));
+        }
+
+        private void ScriptUpdateLibrary_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeScriptEntry == null) return;
+
+            _activeScriptEntry.ScriptPath  = _scriptFilePath ?? _activeScriptEntry.ScriptPath;
+            _activeScriptEntry.Runtime     = ScriptRuntimeBox.Text.Trim();
+            _activeScriptEntry.Arguments   = ScriptArgsBox.Text.Trim();
+            _activeScriptEntry.WorkingDir  = ScriptWorkDirBox.Text.Trim();
+
+            var envVars = new Dictionary<string, string>();
+            foreach (var child in ScriptEnvVarPanel.Children)
+            {
+                if (child is Grid row && row.Children.Count >= 2)
+                {
+                    var k = (row.Children[0] as TextBox)?.Text?.Trim() ?? "";
+                    var v = (row.Children[1] as TextBox)?.Text?.Trim() ?? "";
+                    if (!string.IsNullOrEmpty(k)) envVars[k] = v;
+                }
+            }
+            _activeScriptEntry.EnvVars = envVars;
+
+            SaveLibrary();
+            RefreshLibraryUI();
+
+            _scriptEntryDirty = false;
+            ScriptUpdateLibraryBtn.Visibility = Visibility.Collapsed;
+            ScriptStatusLabel.Text = $"Updated: {_activeScriptEntry.Name}";
+            ScriptStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
         }
 
         private void LibrarySave_Click(object sender, RoutedEventArgs e)
@@ -1760,7 +1814,15 @@ namespace TestApp
                 ScriptTypeLabel.Foreground = new SolidColorBrush(
                     (Color)ColorConverter.ConvertFromString("#F87171"));
             }
+
+            MarkScriptEntryDirty();
         }
+
+        private void ScriptField_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
+            => MarkScriptEntryDirty();
+
+        private void TrendsField_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
+            => MarkTrendsCustomerDirty();
 
         private void ScriptWorkDir_Click(object sender, RoutedEventArgs e)
         {
@@ -1774,7 +1836,10 @@ namespace TestApp
                 ValidateNames = false
             };
             if (dlg.ShowDialog() == true)
+            {
                 ScriptWorkDirBox.Text = System.IO.Path.GetDirectoryName(dlg.FileName) ?? string.Empty;
+                MarkScriptEntryDirty();
+            }
         }
 
         private void ScriptAddEnvVar_Click(object sender, RoutedEventArgs e)
@@ -2176,8 +2241,16 @@ namespace TestApp
             return card;
         }
 
+        private TrendsCustomer? _activeTrendsCustomer = null;
+        private bool            _trendsCustomerDirty  = false;
+        private bool            _suppressDirtyTracking = false;
+
         private void LoadTrendsCustomer(TrendsCustomer c)
         {
+            _suppressDirtyTracking = true;
+            _activeTrendsCustomer  = c;
+            _trendsCustomerDirty   = false;
+
             TrendsCustomerNameBox.Text = c.Name;
             _trendsRunsFolder    = c.RunsFolder;
             _trendsReportsFolder = c.ReportsFolder;
@@ -2187,7 +2260,44 @@ namespace TestApp
             TrendsReportsFolderLabel.Text = string.IsNullOrEmpty(c.ReportsFolder) ? "Same as Runs folder" : c.ReportsFolder;
             TrendsReportsFolderLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
                 string.IsNullOrEmpty(c.ReportsFolder) ? "#4A5F88" : "#CBD5E1"));
+            TrendsUpdateLibraryBtn.Visibility = Visibility.Collapsed;
             UpdateTrendsFilesCount();
+
+            _suppressDirtyTracking = false;
+        }
+
+        private void MarkTrendsCustomerDirty()
+        {
+            if (_suppressDirtyTracking) return;
+            if (_activeTrendsCustomer == null) return;
+            if (_trendsCustomerDirty) return;
+            _trendsCustomerDirty = true;
+            TrendsUpdateLibraryBtn.Visibility = Visibility.Visible;
+            TrendsStatusLabel.Text = $"Unsaved changes — {_activeTrendsCustomer.Name}";
+            TrendsStatusLabel.Foreground = new SolidColorBrush(
+                (Color)ColorConverter.ConvertFromString("#FBBF24"));
+        }
+
+        private void TrendsUpdateLibrary_Click(object sender, RoutedEventArgs e)
+        {
+            if (_activeTrendsCustomer == null) return;
+
+            var existing = _trendsLibrary.FirstOrDefault(c =>
+                c.Id == _activeTrendsCustomer.Id);
+            if (existing == null) return;
+
+            existing.Name          = TrendsCustomerNameBox.Text.Trim();
+            existing.RunsFolder    = _trendsRunsFolder    ?? "";
+            existing.ReportsFolder = _trendsReportsFolder ?? "";
+
+            SaveTrendsLibrary();
+            RefreshTrendsLibraryUI();
+
+            _activeTrendsCustomer = existing;
+            _trendsCustomerDirty  = false;
+            TrendsUpdateLibraryBtn.Visibility = Visibility.Collapsed;
+            TrendsStatusLabel.Text = $"Updated: {existing.Name}";
+            TrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
         }
 
         private void TrendsLibraryAdd_Click(object sender, RoutedEventArgs e)
@@ -2245,6 +2355,7 @@ namespace TestApp
                 TrendsCustomerNameBox.Text = System.IO.Path.GetFileName(
                     System.IO.Path.GetDirectoryName(f.TrimEnd('\\', '/')) ?? f);
             UpdateTrendsFilesCount();
+            MarkTrendsCustomerDirty();
         }
 
         private void TrendsReportsFolderBrowse_Click(object sender, RoutedEventArgs e)
@@ -2255,6 +2366,7 @@ namespace TestApp
             TrendsReportsFolderLabel.Text = f;
             TrendsReportsFolderLabel.Foreground = new SolidColorBrush(
                 (Color)ColorConverter.ConvertFromString("#CBD5E1"));
+            MarkTrendsCustomerDirty();
         }
 
         private void UpdateTrendsFilesCount()
@@ -2268,12 +2380,19 @@ namespace TestApp
         }
 
         private void TrendsRun_Click(object sender, RoutedEventArgs e)
+            => RunTrendsGeneration(silent: false);
+
+        /// <summary>
+        /// Core generation logic shared by the manual button and the auto-watch timer.
+        /// When <paramref name="silent"/> is true the "Open it now?" prompt is suppressed.
+        /// </summary>
+        private void RunTrendsGeneration(bool silent, Action<bool>? onComplete = null)
         {
             string name = TrendsCustomerNameBox.Text.Trim();
             if (string.IsNullOrEmpty(name))
-            { DarkMessageBox.Show("Enter a customer name.", "Required"); return; }
+            { if (!silent) DarkMessageBox.Show("Enter a customer name.", "Required"); return; }
             if (string.IsNullOrEmpty(_trendsRunsFolder) || !System.IO.Directory.Exists(_trendsRunsFolder))
-            { DarkMessageBox.Show("Select a valid Runs folder.", "Required"); return; }
+            { if (!silent) DarkMessageBox.Show("Select a valid Runs folder.", "Required"); return; }
 
             if (!int.TryParse(TrendsFailWindowBox.Text.Trim(), out int failWindow) || failWindow < 1)
                 failWindow = 3;
@@ -2283,13 +2402,15 @@ namespace TestApp
 
             TrendsLogPanel.Visibility = Visibility.Visible;
             TrendsProgress.Visibility = Visibility.Visible;
-            TrendsLog.Text = "";
+            if (!silent) TrendsLog.Text = "";
             TrendsRunBtn.IsEnabled = false;
-            TrendsStatusLabel.Text = "Generating...";
+            TrendsStatusLabel.Text = silent ? "Auto-generating…" : "Generating...";
             TrendsStatusLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#60A5FA"));
 
-            string runsFolder = _trendsRunsFolder;
-            int fw = failWindow;
+            string runsFolder   = _trendsRunsFolder;
+            string customerName = name;
+            int    fw           = failWindow;
+
             System.Threading.Tasks.Task.Run(() =>
             {
                 TestRunTrendsProcessor.Log = msg =>
@@ -2300,25 +2421,29 @@ namespace TestApp
                     });
 
                 var (ok, outputPath, error) =
-                    TestRunTrendsProcessor.Generate(runsFolder, name, reportsFolder, fw);
+                    TestRunTrendsProcessor.Generate(runsFolder, customerName, reportsFolder, fw);
 
                 Dispatcher.Invoke(() =>
                 {
                     TrendsProgress.Visibility = Visibility.Collapsed;
                     TrendsRunBtn.IsEnabled    = true;
+
                     if (ok)
                     {
-                        // Update library entry
                         var entry = _trendsLibrary.FirstOrDefault(c =>
-                            c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+                            c.Name.Equals(customerName, StringComparison.OrdinalIgnoreCase));
                         if (entry != null)
                         { entry.LastGenerated = DateTime.Now; entry.LastOutput = outputPath; }
                         SaveTrendsLibrary();
                         RefreshTrendsLibraryUI();
 
-                        TrendsStatusLabel.Text = $"Saved to {System.IO.Path.GetFileName(outputPath)}";
+                        string shortName = System.IO.Path.GetFileName(outputPath);
+                        TrendsStatusLabel.Text = silent
+                            ? $"Auto-updated {DateTime.Now:HH:mm:ss} → {shortName}"
+                            : $"Saved to {shortName}";
                         TrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
-                        if (DarkMessageBox.Confirm($"Done:\n{outputPath}\n\nOpen it now?", "Trends Generated"))
+
+                        if (!silent && DarkMessageBox.Confirm($"Done:\n{outputPath}\n\nOpen it now?", "Trends Generated"))
                             System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
                                 { FileName = outputPath, UseShellExecute = true });
                     }
@@ -2327,6 +2452,290 @@ namespace TestApp
                         TrendsStatusLabel.Text = $"Failed: {error}";
                         TrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
                     }
+
+                    // Invoke completion callback — passes success flag so caller
+                    // only writes the manifest on success and clears the generating lock
+                    onComplete?.Invoke(ok);
+                });
+            });
+        }
+
+        // ── Auto-watch (multi-customer) ───────────────────────────────────────
+
+        // Each customer gets its own timer. Key = customer Id.
+        private readonly Dictionary<string, System.Windows.Threading.DispatcherTimer>
+            _watchTimers = new();
+        // Track which customer is currently generating to avoid overlaps per-customer
+        private readonly HashSet<string> _generatingIds = new();
+
+        private TrayManager? _tray;
+
+        private void InitTray()
+        {
+            try
+            {
+                _tray = new TrayManager(this)
+                {
+                    OnWatchAll          = WatchAll,
+                    OnStopAll           = StopAll,
+                    GetActiveWatchCount = () => _watchTimers.Count
+                };
+            }
+            catch { /* tray unavailable — not fatal */ }
+        }
+
+        // Called from MainWindow() Loaded handler
+        private void InitTrayOnLoad()
+        {
+            InitTray();
+            // Restore per-customer watches from settings
+            if (_settings.TrendsAutoWatch)
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    foreach (var c in _trendsLibrary)
+                    {
+                        if (!string.IsNullOrEmpty(c.RunsFolder) && Directory.Exists(c.RunsFolder))
+                            StartCustomerWatch(c, silent: true);
+                    }
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        private void TrendsWatchToggle_Click(object sender, RoutedEventArgs e)
+        {
+            string name = TrendsCustomerNameBox.Text.Trim();
+            var customer = _trendsLibrary.FirstOrDefault(c =>
+                c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+
+            if (customer != null && _watchTimers.ContainsKey(customer.Id))
+                StopCustomerWatch(customer.Id);
+            else
+                StartTrendsWatch();
+
+            RefreshWatchAllBtn();
+        }
+
+        private void StartTrendsWatch(bool silent = false)
+        {
+            string name = TrendsCustomerNameBox.Text.Trim();
+            if (string.IsNullOrEmpty(name))
+            { if (!silent) DarkMessageBox.Show("Enter a customer name before starting auto-watch.", "Required"); return; }
+            if (string.IsNullOrEmpty(_trendsRunsFolder) || !System.IO.Directory.Exists(_trendsRunsFolder))
+            { if (!silent) DarkMessageBox.Show("Select a valid Runs folder before starting auto-watch.", "Required"); return; }
+
+            // Find or create the customer object
+            var customer = _trendsLibrary.FirstOrDefault(c =>
+                c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (customer == null)
+            {
+                if (!silent) DarkMessageBox.Show("Save this customer to the library first before starting auto-watch.", "Not in Library");
+                return;
+            }
+
+            StartCustomerWatch(customer, silent);
+            RefreshWatchAllBtn();
+        }
+
+        private void StartCustomerWatch(TrendsCustomer customer, bool silent = false)
+        {
+            if (_watchTimers.ContainsKey(customer.Id)) return; // already watching
+
+            TrendsManifest.Delete(customer.RunsFolder);
+
+            int intervalSecs = _settings.TrendsWatchIntervalSecs > 0
+                ? _settings.TrendsWatchIntervalSecs : 60;
+
+            var timer = new System.Windows.Threading.DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(intervalSecs)
+            };
+            timer.Tick += (_, _) => CustomerWatchTick(customer);
+            timer.Start();
+            _watchTimers[customer.Id] = timer;
+
+            // If this is the currently displayed customer, update the UI
+            if (IsCurrentCustomer(customer))
+            {
+                TrendsWatchToggleBtn.Content    = "⏹ Stop Watch";
+                TrendsWatchToggleBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1F2D20"));
+                TrendsWatchToggleBtn.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+                TrendsWatchStatusLabel.Text     = $"Watching · every {intervalSecs}s · scanning now…";
+                TrendsWatchStatusLabel.Visibility = Visibility.Visible;
+            }
+
+            _settings.TrendsAutoWatch = true;
+            AppDataManager.SaveSettings(_settings);
+            _tray?.UpdateTooltip(_watchTimers.Count);
+
+            // Kick off first scan immediately
+            Dispatcher.BeginInvoke(new Action(() => CustomerWatchTick(customer)),
+                System.Windows.Threading.DispatcherPriority.Background);
+        }
+
+        private void StopCustomerWatch(string customerId)
+        {
+            if (_watchTimers.TryGetValue(customerId, out var timer))
+            {
+                timer.Stop();
+                _watchTimers.Remove(customerId);
+            }
+
+            var customer = _trendsLibrary.FirstOrDefault(c => c.Id == customerId);
+            if (customer != null && IsCurrentCustomer(customer))
+            {
+                TrendsWatchToggleBtn.Content    = "👁 Auto-Watch";
+                TrendsWatchToggleBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E2640"));
+                TrendsWatchToggleBtn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#60A5FA"));
+                TrendsWatchStatusLabel.Text     = "";
+                TrendsWatchStatusLabel.Visibility = Visibility.Collapsed;
+            }
+
+            if (_watchTimers.Count == 0)
+            {
+                _settings.TrendsAutoWatch = false;
+                AppDataManager.SaveSettings(_settings);
+            }
+            _tray?.UpdateTooltip(_watchTimers.Count);
+        }
+
+        private void StopAll()
+        {
+            foreach (var id in _watchTimers.Keys.ToList())
+                StopCustomerWatch(id);
+            RefreshWatchAllBtn();
+        }
+
+        private void WatchAll()
+        {
+            foreach (var customer in _trendsLibrary)
+            {
+                if (!string.IsNullOrEmpty(customer.RunsFolder) &&
+                    Directory.Exists(customer.RunsFolder) &&
+                    !_watchTimers.ContainsKey(customer.Id))
+                {
+                    StartCustomerWatch(customer, silent: true);
+                }
+            }
+            RefreshWatchAllBtn();
+            // Update UI for current customer if they're in the library
+            string name = TrendsCustomerNameBox.Text.Trim();
+            var cur = _trendsLibrary.FirstOrDefault(c => c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (cur != null && _watchTimers.ContainsKey(cur.Id))
+            {
+                TrendsWatchToggleBtn.Content    = "⏹ Stop Watch";
+                TrendsWatchToggleBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1F2D20"));
+                TrendsWatchToggleBtn.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+            }
+        }
+
+        private void WatchAllBtn_Click(object sender, RoutedEventArgs e) => WatchAll();
+
+        private void StopAllBtn_Click(object sender, RoutedEventArgs e) => StopAll();
+
+        private void RefreshWatchAllBtn()
+        {
+            int watching  = _watchTimers.Count;
+            int total     = _trendsLibrary.Count(c =>
+                !string.IsNullOrEmpty(c.RunsFolder) && Directory.Exists(c.RunsFolder));
+            bool allActive = total > 0 && watching >= total;
+
+            if (TrendsWatchAllBtn == null) return;
+            TrendsWatchAllBtn.Content    = allActive ? "⏹ Stop All" : "👁 Watch All";
+            TrendsWatchAllBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
+                allActive ? "#1F2D20" : "#1E2640"));
+            TrendsWatchAllBtn.Foreground = new SolidColorBrush(allActive
+                ? Color.FromRgb(0x4A, 0xDE, 0x80)
+                : (Color)ColorConverter.ConvertFromString("#60A5FA"));
+            TrendsWatchAllBtn.Click -= WatchAllBtn_Click;
+            TrendsWatchAllBtn.Click -= StopAllBtn_Click;
+            TrendsWatchAllBtn.Click += allActive ? StopAllBtn_Click : WatchAllBtn_Click;
+        }
+
+        private bool IsCurrentCustomer(TrendsCustomer c)
+            => c.Name.Equals(TrendsCustomerNameBox.Text.Trim(), StringComparison.OrdinalIgnoreCase);
+
+        private void CustomerWatchTick(TrendsCustomer customer)
+        {
+            if (_generatingIds.Contains(customer.Id)) return;
+            if (!Directory.Exists(customer.RunsFolder))
+            {
+                StopCustomerWatch(customer.Id);
+                return;
+            }
+
+            int intervalSecs = _settings.TrendsWatchIntervalSecs > 0
+                ? _settings.TrendsWatchIntervalSecs : 60;
+
+            bool isCurrent = IsCurrentCustomer(customer);
+            if (isCurrent)
+                TrendsWatchStatusLabel.Text =
+                    $"Watching · every {intervalSecs}s · last scan: {DateTime.Now:HH:mm:ss}";
+
+            var (changed, changeDesc) = TrendsManifest.HasChanged(customer.RunsFolder, customer.Name);
+            if (!changed) return;
+
+            _generatingIds.Add(customer.Id);
+            if (isCurrent)
+            {
+                TrendsWatchStatusLabel.Text = $"{changeDesc} — regenerating…";
+                TrendsWatchStatusLabel.Visibility = Visibility.Visible;
+            }
+
+            string runsFolder = customer.RunsFolder;
+            string name       = customer.Name;
+            string reportsFolder = string.IsNullOrEmpty(customer.ReportsFolder)
+                ? runsFolder : customer.ReportsFolder;
+            int fw = _settings.TrendsWatchIntervalSecs > 0 ? 3 : 3; // use saved fail window
+
+            // Run generation for this customer in background
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                TestRunTrendsProcessor.Log = isCurrent
+                    ? (msg => Dispatcher.Invoke(() =>
+                    {
+                        if (TrendsLog.Text.Length > 0) TrendsLog.Text += "\n";
+                        TrendsLog.Text += $"[{DateTime.Now:HH:mm:ss}]  {msg}";
+                    }))
+                    : _ => { }; // silent for background customers
+
+                var (ok, outputPath, error) =
+                    TestRunTrendsProcessor.Generate(runsFolder, name, reportsFolder, fw);
+
+                Dispatcher.Invoke(() =>
+                {
+                    if (ok)
+                    {
+                        TrendsManifest.Write(runsFolder, name);
+                        var entry = _trendsLibrary.FirstOrDefault(c => c.Id == customer.Id);
+                        if (entry != null)
+                        { entry.LastGenerated = DateTime.Now; entry.LastOutput = outputPath; }
+                        SaveTrendsLibrary();
+                        RefreshTrendsLibraryUI();
+
+                        if (isCurrent)
+                        {
+                            TrendsProgress.Visibility = Visibility.Collapsed;
+                            TrendsRunBtn.IsEnabled    = true;
+                            string shortName = System.IO.Path.GetFileName(outputPath);
+                            TrendsStatusLabel.Text = $"Auto-updated {DateTime.Now:HH:mm:ss} → {shortName}";
+                            TrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+                        }
+
+                        // Show balloon tip for background customers
+                        if (!isCurrent || !IsVisible)
+                            _tray?.UpdateTooltip(_watchTimers.Count);
+                    }
+                    else
+                    {
+                        if (isCurrent)
+                        {
+                            TrendsStatusLabel.Text = $"Failed: {error}";
+                            TrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+                            TrendsWatchStatusLabel.Text =
+                                $"File busy — will retry in {intervalSecs}s";
+                        }
+                    }
+
+                    _generatingIds.Remove(customer.Id);
                 });
             });
         }
@@ -2351,6 +2760,8 @@ namespace TestApp
             if (TrendsFailWindowBox != null) TrendsFailWindowBox.Text = _settings.TrendsFailWindow;
             if (NmonOutDirBox != null && !string.IsNullOrEmpty(_settings.LastNmonOutputDir))
                 NmonOutDirBox.Text = _settings.LastNmonOutputDir;
+
+            // Auto-watch restore is handled by InitTrayOnLoad() after library is loaded
         }
 
         private void SaveSettings()
@@ -2369,8 +2780,22 @@ namespace TestApp
         }
 
         // Save settings whenever the window closes
+        protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+        {
+            if (_watchTimers.Count > 0)
+            {
+                e.Cancel = true;
+                _tray?.MinimizeToTray();
+                return;
+            }
+            base.OnClosing(e);
+        }
+
         protected override void OnClosed(EventArgs e)
         {
+            foreach (var timer in _watchTimers.Values) timer.Stop();
+            _watchTimers.Clear();
+            _tray?.Dispose();
             SaveSettings();
             base.OnClosed(e);
         }
