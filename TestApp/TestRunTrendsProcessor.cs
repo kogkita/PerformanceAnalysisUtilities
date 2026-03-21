@@ -13,10 +13,11 @@ namespace TestApp
 
     public class TrendTestCase
     {
-        public string Name { get; set; } = "";
-        public string Status { get; set; } = "";   // PASS / FAIL / ""
-        public int? Seconds { get; set; }         // null = not run this cycle
-        public string TimeStr { get; set; } = "";   // original HH:mm:ss
+        public string Name         { get; set; } = "";
+        public string Status       { get; set; } = "";   // PASS / FAIL / ""
+        public int?   Seconds      { get; set; }         // null = not run this cycle
+        public string TimeStr      { get; set; } = "";   // original HH:mm:ss
+        public string TestPlanName { get; set; } = "";   // from "Test Plan Name" column
     }
 
     public class TrendRun
@@ -127,11 +128,12 @@ namespace TestApp
                     return null;
                 }
 
-                int colCase = Array.IndexOf(headers, "Test Case Name") + 1;
+                int colCase   = Array.IndexOf(headers, "Test Case Name") + 1;
                 int colStatus = Array.IndexOf(headers, "Status") + 1;
-                int colTime = Array.IndexOf(headers, "Total Time Taken") + 1;
-                int colRun = Array.IndexOf(headers, "Run Number") + 1;
-                int colDate = Array.IndexOf(headers, "Start Date") + 1;
+                int colTime   = Array.IndexOf(headers, "Total Time Taken") + 1;
+                int colRun    = Array.IndexOf(headers, "Run Number") + 1;
+                int colDate   = Array.IndexOf(headers, "Start Date") + 1;
+                int colPlan   = Array.IndexOf(headers, "Test Plan Name") + 1;
 
                 var run = new TrendRun();
                 DateTime earliest = DateTime.MaxValue;
@@ -142,9 +144,10 @@ namespace TestApp
                     string caseName = ws.Cells[r, colCase].Text?.Trim() ?? "";
                     if (string.IsNullOrEmpty(caseName)) continue;
 
-                    string status = ws.Cells[r, colStatus].Text?.Trim() ?? "";
-                    string timeStr = ws.Cells[r, colTime].Text?.Trim() ?? "";
-                    string runNum = colRun > 0 ? ws.Cells[r, colRun].Text?.Trim() ?? "" : "";
+                    string status   = ws.Cells[r, colStatus].Text?.Trim() ?? "";
+                    string timeStr  = ws.Cells[r, colTime].Text?.Trim() ?? "";
+                    string runNum   = colRun  > 0 ? ws.Cells[r, colRun].Text?.Trim()  ?? "" : "";
+                    string planName = colPlan > 0 ? ws.Cells[r, colPlan].Text?.Trim() ?? "" : "";
 
                     if (string.IsNullOrEmpty(run.RunNumber) && !string.IsNullOrEmpty(runNum))
                         run.RunNumber = runNum;
@@ -161,10 +164,11 @@ namespace TestApp
                     int secs = ParseSecs(timeStr);
                     run.Cases.Add(new TrendTestCase
                     {
-                        Name = caseName,
-                        Status = status,
-                        Seconds = secs > 0 ? secs : null,
-                        TimeStr = timeStr
+                        Name         = caseName,
+                        Status       = status,
+                        Seconds      = secs > 0 ? secs : null,
+                        TimeStr      = timeStr,
+                        TestPlanName = planName,
                     });
                 }
 
@@ -372,6 +376,7 @@ namespace TestApp
 
                 WriteExecutiveSummarySheet(pkg, runs, customerName);
                 WriteTrendSheet(pkg, runs, failWindow);
+                WriteGroupedTrendSheet(pkg, runs, failWindow);
                 WriteFlagsSheet(pkg, runs);
                 WriteChartsSheet(pkg, runs, customerName);
 
@@ -680,6 +685,287 @@ namespace TestApp
             ws.Cells[$"A1:{lastColLetter}1"].AutoFilter = true;
 
             ws.View.FreezePanes(2, 4);   // freeze Test Case, Failures, Streak cols
+        }
+
+        // ── Sheet 3b: Grouped by Test Plan ───────────────────────────────────
+
+        /// <summary>
+        /// Same content as "Test Case Trends" but rows are organised into
+        /// labelled groups — one collapsible section per Test Plan Name.
+        /// Tests whose plan name is blank are collected under "(No Plan)".
+        /// Within each group the sort order matches the main sheet
+        /// (fail count desc, then A-Z).
+        /// </summary>
+        private static void WriteGroupedTrendSheet(ExcelPackage pkg, List<TrendRun> runs, int failWindow = 3)
+        {
+            var ws = pkg.Workbook.Worksheets.Add("By Test Plan");
+
+            // ── Build lookups ─────────────────────────────────────────────────
+            var lookup = runs.Select(r =>
+                r.Cases.ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase)
+            ).ToList();
+
+            int windowStart = Math.Max(0, runs.Count - failWindow);
+            var windowRuns  = lookup.Skip(windowStart).ToList();
+
+            // ── Collect plan assignments per test case across all runs ──────────
+            // caseToPlan     = current (newest) plan for grouping
+            // planMovers     = cases whose plan changed at some point, with history note
+            var caseToPlan  = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+            var planMovers  = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            // Track per-case plan history: list of (runLabel, planName) in run order oldest→newest
+            var caseHistory = new Dictionary<string, List<(string RunLabel, string Plan)>>(
+                StringComparer.OrdinalIgnoreCase);
+
+            // runs[0]=newest, runs[N-1]=oldest — iterate oldest→newest to build history
+            for (int ri = runs.Count - 1; ri >= 0; ri--)
+            {
+                var run = runs[ri];
+                foreach (var tc in run.Cases)
+                {
+                    string plan = string.IsNullOrWhiteSpace(tc.TestPlanName)
+                        ? "(No Plan)" : tc.TestPlanName;
+                    if (!caseHistory.ContainsKey(tc.Name))
+                        caseHistory[tc.Name] = new List<(string, string)>();
+                    // Only record when the plan actually changes
+                    var hist = caseHistory[tc.Name];
+                    if (hist.Count == 0 || !hist[^1].Plan.Equals(plan, StringComparison.OrdinalIgnoreCase))
+                        hist.Add((run.Label, plan));
+                }
+            }
+
+            // Build caseToPlan (newest plan wins) and detect movers
+            foreach (var kv in caseHistory)
+            {
+                string newestPlan = kv.Value[^1].Plan;   // last entry = newest run
+                caseToPlan[kv.Key] = newestPlan;
+
+                if (kv.Value.Count > 1)
+                {
+                    // Build a readable note: "LNPlan (DEC 25 #1) → LNPlan2 (FEB 26 #2)"
+                    var parts = kv.Value.Select(h => $"{h.Plan} ({h.RunLabel})");
+                    planMovers[kv.Key] = "Plan history: " + string.Join(" -> ", parts);
+                }
+            }
+
+            // Group and sort: within each group, fail count desc then A-Z
+            var grouped = caseToPlan
+                .GroupBy(kv => kv.Value, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(g => g.Key, StringComparer.OrdinalIgnoreCase)
+                .Select(g => new
+                {
+                    PlanName = g.Key,
+                    Cases    = g.Select(kv => kv.Key)
+                        .OrderByDescending(n => windowRuns.Count(wr =>
+                            wr.TryGetValue(n, out var wc) && wc.Status == "FAIL"))
+                        .ThenBy(n => n, StringComparer.OrdinalIgnoreCase)
+                        .ToList()
+                })
+                .ToList();
+
+            // Pre-compute streaks
+            var streakMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var kv in caseToPlan)
+            {
+                int s = 0;
+                for (int i = 0; i < runs.Count; i++)
+                {
+                    if (lookup[i].TryGetValue(kv.Key, out var tc) && tc.Status == "FAIL") s++;
+                    else break;
+                }
+                streakMap[kv.Key] = s;
+            }
+
+            // ── Header helpers ────────────────────────────────────────────────
+            void StyleHdr(ExcelRange cell, Color bg)
+            {
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.Color.SetColor(Color.White);
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(bg);
+                cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                cell.Style.VerticalAlignment   = ExcelVerticalAlignment.Center;
+                cell.Style.WrapText = true;
+            }
+
+            // ── Column header row (row 1) ─────────────────────────────────────
+            ws.Cells[1, 1].Value = "Test Plan / Test Case";
+            StyleHdr(ws.Cells[1, 1], Color.FromArgb(0x1E, 0x40, 0xAF));
+            ws.Cells[1, 2].Value = $"Failures in Last {Math.Min(failWindow, runs.Count)} Runs";
+            StyleHdr(ws.Cells[1, 2], Color.FromArgb(0x1E, 0x40, 0xAF));
+            ws.Cells[1, 3].Value = "Current\nStreak";
+            StyleHdr(ws.Cells[1, 3], Color.FromArgb(0x1E, 0x40, 0xAF));
+
+            for (int i = 0; i < runs.Count; i++)
+            {
+                int sc = 4 + i * 2;
+                ws.Cells[1, sc].Value     = $"{runs[i].Label}\nStatus";
+                StyleHdr(ws.Cells[1, sc],     Color.FromArgb(0x1E, 0x40, 0xAF));
+                ws.Cells[1, sc + 1].Value = $"{runs[i].Label}\nRuntime";
+                StyleHdr(ws.Cells[1, sc + 1], Color.FromArgb(0x1E, 0x40, 0xAF));
+            }
+            ws.Row(1).Height = 30;
+
+            // ── Data rows ─────────────────────────────────────────────────────
+            int lastCol = 3 + runs.Count * 2;
+            int row     = 2;
+
+            foreach (var group in grouped)
+            {
+                // ── Plan group header row ─────────────────────────────────────
+                int groupHeaderRow = row;
+                int passCases  = group.Cases.Count(n => runs.Any(r =>
+                    r.Cases.Any(c => c.Name == n && c.Status == "PASS")));
+                int failCases  = group.Cases.Count(n =>
+                    (streakMap.TryGetValue(n, out int sk) ? sk : 0) >= 1);
+
+                // Merge across all columns for a full-width group label
+                ws.Cells[row, 1, row, lastCol].Merge = true;
+                int moverCount = group.Cases.Count(n => planMovers.ContainsKey(n));
+                string moverNote = moverCount > 0 ? $"  |  {moverCount} moved plan" : "";
+                ws.Cells[row, 1].Value = $"{group.PlanName}  ({group.Cases.Count} test case(s)){moverNote}";
+                ws.Cells[row, 1].Style.Font.Bold = true;
+                ws.Cells[row, 1].Style.Font.Size = 11;
+                ws.Cells[row, 1].Style.Font.Color.SetColor(Color.White);
+                ws.Cells[row, 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                ws.Cells[row, 1].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0x1E, 0x29, 0x4E));
+                ws.Cells[row, 1].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                ws.Row(row).Height = 22;
+                row++;
+
+                // ── Test case rows ────────────────────────────────────────────
+                int groupSize = group.Cases.Count;
+                for (int ci = 0; ci < groupSize; ci++)
+                {
+                    string caseName = group.Cases[ci];
+                    bool   alt      = ci % 2 == 1;
+                    var    rowBg    = alt ? Color.FromArgb(0xF5, 0xF7, 0xFF) : Color.White;
+
+                    // Col 1: test case name (indented); movers get ⚠ prefix + amber bg + comment
+                    bool isMover = planMovers.ContainsKey(caseName);
+                    ws.Cells[row, 1].Value = isMover ? "    ⚠ " + caseName : "    " + caseName;
+                    ws.Cells[row, 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                    ws.Cells[row, 1].Style.Fill.BackgroundColor.SetColor(
+                        isMover ? Color.FromArgb(0xFF, 0xF3, 0xCD) : rowBg);
+                    if (isMover)
+                    {
+                        ws.Cells[row, 1].Style.Font.Color.SetColor(Color.FromArgb(0x78, 0x35, 0x00));
+                        // Add a cell comment showing the full plan history
+                        var comment = ws.Cells[row, 1].AddComment(planMovers[caseName], "Trends");
+                        comment.AutoFit = true;
+                    }
+
+                    // Col 2: failures in window
+                    int failsInWindow = windowRuns.Count(wr =>
+                        wr.TryGetValue(caseName, out var wc) && wc.Status == "FAIL");
+                    ws.Cells[row, 2].Value = failsInWindow;
+                    ws.Cells[row, 2].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    ws.Cells[row, 2].Style.Fill.PatternType    = ExcelFillStyle.Solid;
+                    if (failsInWindow > 0)
+                    {
+                        ws.Cells[row, 2].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xFE, 0xE2, 0xE2));
+                        ws.Cells[row, 2].Style.Font.Color.SetColor(Color.FromArgb(0x99, 0x1B, 0x1B));
+                        ws.Cells[row, 2].Style.Font.Bold = true;
+                    }
+                    else ws.Cells[row, 2].Style.Fill.BackgroundColor.SetColor(rowBg);
+
+                    // Col 3: current streak
+                    int streak = streakMap.TryGetValue(caseName, out int sk2) ? sk2 : 0;
+                    ws.Cells[row, 3].Value = streak;
+                    ws.Cells[row, 3].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                    ws.Cells[row, 3].Style.Fill.PatternType    = ExcelFillStyle.Solid;
+                    if (streak >= 2)
+                    {
+                        ws.Cells[row, 3].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xCC, 0x00, 0x00));
+                        ws.Cells[row, 3].Style.Font.Color.SetColor(Color.White);
+                        ws.Cells[row, 3].Style.Font.Bold = true;
+                    }
+                    else if (streak == 1)
+                    {
+                        ws.Cells[row, 3].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xFE, 0xE2, 0xE2));
+                        ws.Cells[row, 3].Style.Font.Color.SetColor(Color.FromArgb(0x99, 0x1B, 0x1B));
+                        ws.Cells[row, 3].Style.Font.Bold = true;
+                    }
+                    else ws.Cells[row, 3].Style.Fill.BackgroundColor.SetColor(rowBg);
+
+                    // Run columns
+                    for (int i = 0; i < runs.Count; i++)
+                    {
+                        int sc = 4 + i * 2;
+                        var bg = rowBg;
+
+                        if (lookup[i].TryGetValue(caseName, out var tc))
+                        {
+                            ws.Cells[row, sc].Value = tc.Status;
+                            ws.Cells[row, sc].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                            ws.Cells[row, sc].Style.Font.Bold = true;
+                            ws.Cells[row, sc].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                            if (tc.Status == "PASS")
+                            {
+                                ws.Cells[row, sc].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xD1, 0xFA, 0xE5));
+                                ws.Cells[row, sc].Style.Font.Color.SetColor(Color.FromArgb(0x06, 0x5F, 0x46));
+                            }
+                            else if (tc.Status == "FAIL")
+                            {
+                                ws.Cells[row, sc].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xFE, 0xE2, 0xE2));
+                                ws.Cells[row, sc].Style.Font.Color.SetColor(Color.FromArgb(0x99, 0x1B, 0x1B));
+                            }
+                            else ws.Cells[row, sc].Style.Fill.BackgroundColor.SetColor(bg);
+
+                            ws.Cells[row, sc + 1].Value = tc.TimeStr;
+                            ws.Cells[row, sc + 1].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                            ws.Cells[row, sc + 1].Style.Fill.PatternType    = ExcelFillStyle.Solid;
+                            Color runtimeBg = bg;
+                            if (i > 0 && tc.Seconds.HasValue && tc.Seconds > 0)
+                            {
+                                var prev = lookup[i - 1].TryGetValue(caseName, out var pt) ? pt : null;
+                                if (prev?.Seconds > 0)
+                                {
+                                    double pct = (tc.Seconds.Value - prev.Seconds.Value) * 100.0 / prev.Seconds.Value;
+                                    if      (pct >=  25) runtimeBg = Color.FromArgb(0xFF, 0xF3, 0xCD);
+                                    else if (pct <= -25) runtimeBg = Color.FromArgb(0xD1, 0xFA, 0xE5);
+                                }
+                            }
+                            ws.Cells[row, sc + 1].Style.Fill.BackgroundColor.SetColor(runtimeBg);
+                        }
+                        else
+                        {
+                            ws.Cells[row, sc].Value     = "—";
+                            ws.Cells[row, sc].Style.Font.Color.SetColor(Color.FromArgb(0xBB, 0xBB, 0xBB));
+                            ws.Cells[row, sc].Style.HorizontalAlignment  = ExcelHorizontalAlignment.Center;
+                            ws.Cells[row, sc].Style.Fill.PatternType     = ExcelFillStyle.Solid;
+                            ws.Cells[row, sc].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xF3, 0xF4, 0xF6));
+                            ws.Cells[row, sc + 1].Value = "—";
+                            ws.Cells[row, sc + 1].Style.Font.Color.SetColor(Color.FromArgb(0xBB, 0xBB, 0xBB));
+                            ws.Cells[row, sc + 1].Style.HorizontalAlignment  = ExcelHorizontalAlignment.Center;
+                            ws.Cells[row, sc + 1].Style.Fill.PatternType     = ExcelFillStyle.Solid;
+                            ws.Cells[row, sc + 1].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xF3, 0xF4, 0xF6));
+                        }
+                    }
+
+                    // Group rows for Excel row-grouping (outline level 1) so they collapse
+                    ws.Row(row).OutlineLevel = 1;
+                    row++;
+                }
+
+                // Mark the group header for outline summary row (shown when collapsed)
+                ws.Row(groupHeaderRow).OutlineLevel = 0;
+            }
+
+            // ── Column widths, autofilter, freeze ─────────────────────────────
+            ws.Column(1).Width = 56;
+            ws.Column(2).Width = 14;
+            ws.Column(3).Width = 10;
+            for (int i = 0; i < runs.Count; i++)
+            {
+                ws.Column(4 + i * 2).Width = 10;
+                ws.Column(5 + i * 2).Width = 12;
+            }
+
+            string lastColLetter = GetColumnLetter(lastCol);
+            ws.Cells[$"A1:{lastColLetter}1"].AutoFilter = true;
+            ws.View.FreezePanes(2, 4);
         }
 
         // ── Sheet 3: Flags ────────────────────────────────────────────────────
