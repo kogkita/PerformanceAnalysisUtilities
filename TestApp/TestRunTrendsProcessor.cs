@@ -297,7 +297,7 @@ namespace TestApp
 
             // Header row
             int hRow = 4;
-            var headers = new[] { "Run", "Date", "Total Cases", "Passed", "Failed", "Pass %", "Total Runtime", "Avg per Test" };
+            var headers = new[] { "Run", "Date", "Total Cases", "Passed", "Failed", "Pass %", "Total Runtime", "Avg per Test Case" };
             for (int c = 0; c < headers.Length; c++)
             {
                 ws.Cells[hRow, c + 1].Value = headers[c];
@@ -370,12 +370,6 @@ namespace TestApp
         {
             var ws = pkg.Workbook.Worksheets.Add("Test Case Trends");
 
-            // Collect all unique test case names sorted A-Z
-            var allCases = runs.SelectMany(r => r.Cases.Select(c => c.Name))
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .OrderBy(n => n)
-                .ToList();
-
             // Build lookup: runIndex -> caseName -> TrendTestCase
             var lookup = runs.Select(r =>
                 r.Cases.ToDictionary(c => c.Name, c => c, StringComparer.OrdinalIgnoreCase)
@@ -385,62 +379,50 @@ namespace TestApp
             int windowStart = Math.Max(0, runs.Count - failWindow);
             var windowRuns = lookup.Skip(windowStart).ToList();
 
-            // Header row 1: Col A = Test Case Name, Col B = Fail count label, Col C+ = runs
+            // Collect all unique test case names — sorted by fail count desc, then A-Z
+            var allCases = runs.SelectMany(r => r.Cases.Select(c => c.Name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderByDescending(n => windowRuns.Count(wr => wr.TryGetValue(n, out var wc) && wc.Status == "FAIL"))
+                .ThenBy(n => n)
+                .ToList();
+
+            // Single header row: Col A = Test Case Name, Col B = Fail count label,
+            // Col C+ = one column per run/metric with "RunLabel\nStatus" / "RunLabel\nRuntime"
+            void StyleHdr(ExcelRange cell, Color bg)
+            {
+                cell.Style.Font.Bold = true;
+                cell.Style.Font.Color.SetColor(Color.White);
+                cell.Style.Fill.PatternType = ExcelFillStyle.Solid;
+                cell.Style.Fill.BackgroundColor.SetColor(bg);
+                cell.Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                cell.Style.VerticalAlignment = ExcelVerticalAlignment.Center;
+                cell.Style.WrapText = true;
+            }
+
             ws.Cells[1, 1].Value = "Test Case Name";
-            ws.Cells[1, 1].Style.Font.Bold = true;
-            ws.Cells[1, 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
-            ws.Cells[1, 1].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0x1E, 0x40, 0xAF));
-            ws.Cells[1, 1].Style.Font.Color.SetColor(Color.White);
+            StyleHdr(ws.Cells[1, 1], Color.FromArgb(0x1E, 0x40, 0xAF));
 
-            // Col B header: Failures in last N runs — row 1 only, no merge with row 2
             ws.Cells[1, 2].Value = $"Failures in Last {Math.Min(failWindow, runs.Count)} Runs";
-            ws.Cells[1, 2].Style.Font.Bold = true;
-            ws.Cells[1, 2].Style.Font.Color.SetColor(Color.White);
-            ws.Cells[1, 2].Style.Fill.PatternType = ExcelFillStyle.Solid;
-            ws.Cells[1, 2].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0x1E, 0x40, 0xAF));
-            ws.Cells[1, 2].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-            ws.Cells[1, 2].Style.VerticalAlignment = ExcelVerticalAlignment.Center;
-            ws.Cells[1, 2].Style.WrapText = true;
-            // Row 2 col B — empty, matching style
-            ws.Cells[2, 2].Style.Fill.PatternType = ExcelFillStyle.Solid;
-            ws.Cells[2, 2].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0x2D, 0x52, 0xC4));
+            StyleHdr(ws.Cells[1, 2], Color.FromArgb(0x1E, 0x40, 0xAF));
 
             for (int i = 0; i < runs.Count; i++)
             {
-                int startCol = 3 + i * 2;   // starts at col C (3) not B (2)
-                ws.Cells[1, startCol, 1, startCol + 1].Merge = true;
-                ws.Cells[1, startCol].Value = runs[i].Label;
-                ws.Cells[1, startCol].Style.Font.Bold = true;
-                ws.Cells[1, startCol].Style.Font.Color.SetColor(Color.White);
-                ws.Cells[1, startCol].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                ws.Cells[1, startCol].Style.Fill.BackgroundColor.SetColor(
-                    Color.FromArgb(0x1E, 0x40, 0xAF));
-                ws.Cells[1, startCol].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                int sc = 3 + i * 2;
+                ws.Cells[1, sc].Value = $"{runs[i].Label}\nStatus";
+                StyleHdr(ws.Cells[1, sc], Color.FromArgb(0x1E, 0x40, 0xAF));
+
+                ws.Cells[1, sc + 1].Value = $"{runs[i].Label}\nRuntime";
+                StyleHdr(ws.Cells[1, sc + 1], Color.FromArgb(0x1E, 0x40, 0xAF));
             }
 
-            // Header row 2: Status / Runtime sub-headers
-            ws.Cells[2, 1].Value = "";
-            ws.Cells[2, 2].Value = "";
-            for (int i = 0; i < runs.Count; i++)
-            {
-                int sc = 3 + i * 2;   // matches data column start
-                ws.Cells[2, sc].Value = "Status";
-                ws.Cells[2, sc + 1].Value = "Runtime";
-                for (int c = sc; c <= sc + 1; c++)
-                {
-                    ws.Cells[2, c].Style.Font.Bold = true;
-                    ws.Cells[2, c].Style.Font.Color.SetColor(Color.White);
-                    ws.Cells[2, c].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                    ws.Cells[2, c].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0x2D, 0x52, 0xC4));
-                    ws.Cells[2, c].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
-                }
-            }
+            // Row height for the header to accommodate the two-line text
+            ws.Row(1).Height = 30;
 
-            // Data rows
+            // Data rows (now start at row 2, not row 3)
             for (int ri = 0; ri < allCases.Count; ri++)
             {
                 string caseName = allCases[ri];
-                int row = ri + 3;
+                int row = ri + 2;
                 bool alt = ri % 2 == 1;
 
                 ws.Cells[row, 1].Value = caseName;
@@ -538,12 +520,12 @@ namespace TestApp
                 ws.Column(4 + i * 2).Width = 12;
             }
 
-            // Autofilter across both header rows — last col is 2 + runs.Count*2
+            // Autofilter on the single header row
             int lastCol = 2 + runs.Count * 2;
             string lastColLetter = GetColumnLetter(lastCol);
-            ws.Cells[$"A1:{lastColLetter}2"].AutoFilter = true;
+            ws.Cells[$"A1:{lastColLetter}1"].AutoFilter = true;
 
-            ws.View.FreezePanes(3, 3);
+            ws.View.FreezePanes(2, 3);
         }
 
         // ── Sheet 3: Flags ────────────────────────────────────────────────────

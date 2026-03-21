@@ -402,12 +402,44 @@
                             </Button>
                         </StackPanel>
 
+                        <!-- ── Backup & Restore ── -->
+                        <StackPanel DockPanel.Dock="Bottom" Margin="12,0,12,10">
+                            <Rectangle Height="1" Fill="#1E2130" Margin="0,0,0,8"/>
+                            <TextBlock Text="BACKUP &amp; RESTORE"
+                                       FontSize="10" FontWeight="Bold" Foreground="#6B7A99"
+                                       FontFamily="Segoe UI Variable, Segoe UI"
+                                       Margin="8,0,0,6"/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="4"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Button Grid.Column="0"
+                                        Content="&#x2191; Export All"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        Background="#1E2640" Foreground="#60A5FA"
+                                        FontSize="10" FontWeight="SemiBold"
+                                        Height="28"
+                                        ToolTip="Export all libraries and settings to a single backup file"
+                                        Click="GlobalExport_Click"/>
+                                <Button Grid.Column="2"
+                                        Content="&#x2193; Import All"
+                                        Style="{StaticResource ActionButtonStyle}"
+                                        Background="#1E2640" Foreground="#60A5FA"
+                                        FontSize="10" FontWeight="SemiBold"
+                                        Height="28"
+                                        ToolTip="Restore all libraries and settings from a backup file"
+                                        Click="GlobalImport_Click"/>
+                            </Grid>
+                        </StackPanel>
+
                         <TextBlock DockPanel.Dock="Bottom"
                                    Text="v1.2.0"
                                    FontSize="11"
                                    Foreground="#2D3450"
                                    FontFamily="Segoe UI Variable, Segoe UI"
-                                   Margin="20,0,0,16"/>
+                                   Margin="20,0,0,4"/>
 
                     </DockPanel>
                 </Border>
@@ -1815,13 +1847,29 @@
                                                    FontSize="10" FontWeight="Bold" Foreground="#6B7A99"
                                                    FontFamily="Segoe UI Variable, Segoe UI"
                                                    VerticalAlignment="Center"/>
-                                        <Button Grid.Column="1" Content="+ Save Current"
-                                                x:Name="LibrarySaveBtn"
-                                                Style="{StaticResource ActionButtonStyle}"
-                                                Background="#1E2640" Foreground="#60A5FA"
-                                                FontSize="10" FontWeight="SemiBold"
-                                                Height="24" Padding="8,0"
-                                                Click="LibrarySave_Click"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button Content="&#x2191;"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#6B7A99"
+                                                    FontSize="11" FontWeight="SemiBold"
+                                                    Width="24" Height="24" Margin="0,0,4,0"
+                                                    ToolTip="Export script library to file"
+                                                    Click="LibraryExport_Click"/>
+                                            <Button Content="&#x2193;"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#6B7A99"
+                                                    FontSize="11" FontWeight="SemiBold"
+                                                    Width="24" Height="24" Margin="0,0,4,0"
+                                                    ToolTip="Import script library from file"
+                                                    Click="LibraryImport_Click"/>
+                                            <Button Content="+ Save Current"
+                                                    x:Name="LibrarySaveBtn"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#60A5FA"
+                                                    FontSize="10" FontWeight="SemiBold"
+                                                    Height="24" Padding="8,0"
+                                                    Click="LibrarySave_Click"/>
+                                        </StackPanel>
                                     </Grid>
 
                                     <!-- Library list -->
@@ -2178,13 +2226,29 @@
                                                    FontSize="10" FontWeight="Bold" Foreground="#6B7A99"
                                                    FontFamily="Segoe UI Variable, Segoe UI"
                                                    VerticalAlignment="Center"/>
-                                        <Button Grid.Column="1" Content="+ Add"
-                                                x:Name="TrendsLibraryAddBtn"
-                                                Style="{StaticResource ActionButtonStyle}"
-                                                Background="#1E2640" Foreground="#60A5FA"
-                                                FontSize="10" FontWeight="SemiBold"
-                                                Height="24" Padding="8,0"
-                                                Click="TrendsLibraryAdd_Click"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal">
+                                            <Button Content="&#x2191;"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#6B7A99"
+                                                    FontSize="11" FontWeight="SemiBold"
+                                                    Width="24" Height="24" Margin="0,0,4,0"
+                                                    ToolTip="Export customer library to file"
+                                                    Click="TrendsLibraryExport_Click"/>
+                                            <Button Content="&#x2193;"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#6B7A99"
+                                                    FontSize="11" FontWeight="SemiBold"
+                                                    Width="24" Height="24" Margin="0,0,4,0"
+                                                    ToolTip="Import customer library from file"
+                                                    Click="TrendsLibraryImport_Click"/>
+                                            <Button Content="+ Add"
+                                                    x:Name="TrendsLibraryAddBtn"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#60A5FA"
+                                                    FontSize="10" FontWeight="SemiBold"
+                                                    Height="24" Padding="8,0"
+                                                    Click="TrendsLibraryAdd_Click"/>
+                                        </StackPanel>
                                     </Grid>
                                     <Border Grid.Row="1" Background="#0A0D18" BorderBrush="#1A2030"
                                             BorderThickness="1" CornerRadius="8" Padding="4">

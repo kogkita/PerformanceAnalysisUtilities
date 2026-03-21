@@ -30,6 +30,7 @@ namespace TestApp
                 ApplyMaximizedLayout();
                 LoadLibrary();
                 LoadTrendsLibrary();
+                LoadSettings();
                 DarkMessageBox.SetOwner(this);
             };
         }
@@ -1114,9 +1115,7 @@ namespace TestApp
 
         // ── Script Library ────────────────────────────────────
 
-        private static readonly string LibraryPath = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "PerformanceTestUtilities", "script_library.json");
+        private static readonly string LibraryPath = AppDataManager.ScriptLibraryPath;
 
         private List<ScriptEntry> _library = new();
 
@@ -1154,15 +1153,7 @@ namespace TestApp
 
         private void LoadLibrary()
         {
-            try
-            {
-                if (System.IO.File.Exists(LibraryPath))
-                {
-                    var json = System.IO.File.ReadAllText(LibraryPath);
-                    _library = System.Text.Json.JsonSerializer.Deserialize<List<ScriptEntry>>(json)
-                               ?? new List<ScriptEntry>();
-                }
-            }
+            try { _library = AppDataManager.LoadScriptLibrary(); }
             catch { _library = new List<ScriptEntry>(); }
 
             bool anyChanged = false;
@@ -1250,14 +1241,7 @@ namespace TestApp
 
         private void SaveLibrary()
         {
-            try
-            {
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(LibraryPath)!);
-                var json = System.Text.Json.JsonSerializer.Serialize(_library,
-                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                System.IO.File.WriteAllText(LibraryPath, json);
-            }
-            catch { }
+            AppDataManager.SaveScriptLibrary(_library);
         }
 
         private void RefreshLibraryUI()
@@ -2037,9 +2021,7 @@ namespace TestApp
 
         // ── Test Run Trends ───────────────────────────────────────────────────
 
-        private static readonly string TrendsLibraryPath = System.IO.Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-            "PerformanceTestUtilities", "trends_library.json");
+        private static readonly string TrendsLibraryPath = AppDataManager.TrendsLibraryPath;
 
         private class TrendsCustomer
         {
@@ -2057,29 +2039,31 @@ namespace TestApp
 
         private void LoadTrendsLibrary()
         {
-            try
+            var dtos = AppDataManager.LoadTrendsLibrary();
+            _trendsLibrary = dtos.Select(d => new TrendsCustomer
             {
-                if (System.IO.File.Exists(TrendsLibraryPath))
-                {
-                    var json = System.IO.File.ReadAllText(TrendsLibraryPath);
-                    _trendsLibrary = System.Text.Json.JsonSerializer.Deserialize<List<TrendsCustomer>>(json)
-                                     ?? new();
-                }
-            }
-            catch { _trendsLibrary = new(); }
+                Id            = d.Id,
+                Name          = d.Name,
+                RunsFolder    = d.RunsFolder,
+                ReportsFolder = d.ReportsFolder,
+                LastGenerated = d.LastGenerated,
+                LastOutput    = d.LastOutput,
+            }).ToList();
             RefreshTrendsLibraryUI();
         }
 
         private void SaveTrendsLibrary()
         {
-            try
+            var dtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
             {
-                System.IO.Directory.CreateDirectory(System.IO.Path.GetDirectoryName(TrendsLibraryPath)!);
-                var json = System.Text.Json.JsonSerializer.Serialize(_trendsLibrary,
-                    new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-                System.IO.File.WriteAllText(TrendsLibraryPath, json);
-            }
-            catch { }
+                Id            = c.Id,
+                Name          = c.Name,
+                RunsFolder    = c.RunsFolder,
+                ReportsFolder = c.ReportsFolder,
+                LastGenerated = c.LastGenerated,
+                LastOutput    = c.LastOutput,
+            }).ToList();
+            AppDataManager.SaveTrendsLibrary(dtos);
         }
 
         private void RefreshTrendsLibraryUI()
@@ -2347,7 +2331,289 @@ namespace TestApp
             });
         }
 
+        // ── Settings — persist UI defaults ───────────────────────────────────
+
+        private AppDataManager.AppSettings _settings = new();
+
+        private void LoadSettings()
+        {
+            _settings = AppDataManager.LoadSettings();
+
+            // Apply to UI controls
+            if (ClubOutputCheckbox     != null) ClubOutputCheckbox.IsChecked     = _settings.ConvertClubOutput;
+            if (IncludeChartsCheckbox  != null) IncludeChartsCheckbox.IsChecked  = _settings.ConvertIncludeCharts;
+            if (JTLClubOutputCheckbox  != null) JTLClubOutputCheckbox.IsChecked  = _settings.JtlClubOutput;
+            if (JTLIncludeChartsCheckbox != null) JTLIncludeChartsCheckbox.IsChecked = _settings.JtlIncludeCharts;
+            if (BLGProduceGraphsCheckbox != null) BLGProduceGraphsCheckbox.IsChecked = _settings.BlgProduceGraphs;
+            if (BLGRadioDb != null && _settings.BlgServerType == "Db") BLGRadioDb.IsChecked = true;
+            if (CmpModeSequential != null && _settings.CmpMode == "Sequential") CmpModeSequential.IsChecked = true;
+            if (CmpSlaTextBox  != null) CmpSlaTextBox.Text  = _settings.CmpSlaMs;
+            if (TrendsFailWindowBox != null) TrendsFailWindowBox.Text = _settings.TrendsFailWindow;
+            if (NmonOutDirBox != null && !string.IsNullOrEmpty(_settings.LastNmonOutputDir))
+                NmonOutDirBox.Text = _settings.LastNmonOutputDir;
+        }
+
+        private void SaveSettings()
+        {
+            _settings.ConvertClubOutput    = ClubOutputCheckbox?.IsChecked      == true;
+            _settings.ConvertIncludeCharts = IncludeChartsCheckbox?.IsChecked   == true;
+            _settings.JtlClubOutput        = JTLClubOutputCheckbox?.IsChecked   == true;
+            _settings.JtlIncludeCharts     = JTLIncludeChartsCheckbox?.IsChecked == true;
+            _settings.BlgProduceGraphs     = BLGProduceGraphsCheckbox?.IsChecked == true;
+            _settings.BlgServerType        = BLGRadioDb?.IsChecked == true ? "Db" : "App";
+            _settings.CmpMode              = CmpModeSequential?.IsChecked == true ? "Sequential" : "AllVsBaseline";
+            _settings.CmpSlaMs             = CmpSlaTextBox?.Text?.Trim() ?? "";
+            _settings.TrendsFailWindow     = TrendsFailWindowBox?.Text?.Trim() ?? "3";
+            _settings.LastNmonOutputDir    = NmonOutDirBox?.Text?.Trim() ?? "";
+            AppDataManager.SaveSettings(_settings);
+        }
+
+        // Save settings whenever the window closes
+        protected override void OnClosed(EventArgs e)
+        {
+            SaveSettings();
+            base.OnClosed(e);
+        }
+
+        // ── Export / Import — Script Library ─────────────────────────────────
+
+        private void LibraryExport_Click(object sender, RoutedEventArgs e)
+        {
+            if (_library.Count == 0)
+            {
+                DarkMessageBox.Show("The script library is empty — nothing to export.", "Export Library");
+                return;
+            }
+            var dlg = new SaveFileDialog
+            {
+                Title = "Export Script Library",
+                Filter = "JSON backup (*.json)|*.json",
+                FileName = $"ScriptLibrary_backup_{DateTime.Now:yyyyMMdd}.json"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            bool ok = AppDataManager.ExportScriptLibrary(_library, dlg.FileName);
+            if (ok)
+                DarkMessageBox.Show($"Exported {_library.Count} script(s) to:\n{dlg.FileName}", "Export Complete");
+            else
+                DarkMessageBox.Show("Export failed — could not write the file.", "Export Failed");
+        }
+
+        private void LibraryImport_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new OpenFileDialog
+            {
+                Title = "Import Script Library",
+                Filter = "JSON backup (*.json)|*.json|All Files (*.*)|*.*"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var (imported, error) = AppDataManager.ImportScriptLibrary(dlg.FileName, _library);
+            if (imported == null)
+            {
+                DarkMessageBox.Show($"Import failed:\n{error}", "Import Failed");
+                return;
+            }
+            if (imported.Count == 0)
+            {
+                DarkMessageBox.Show("No new entries found — all scripts in the file already exist in your library.", "Nothing to Import");
+                return;
+            }
+
+            bool confirmed = DarkMessageBox.Confirm(
+                $"Import {imported.Count} new script(s) into the library?\n\nExisting scripts will not be affected.",
+                "Confirm Import");
+            if (!confirmed) return;
+
+            _library.AddRange(imported);
+            SaveLibrary();
+            RefreshLibraryUI();
+            ScriptStatusLabel.Text = $"Imported {imported.Count} new script(s).";
+            ScriptStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+        }
+
+        // ── Export / Import — Trends Library ─────────────────────────────────
+
+        private void TrendsLibraryExport_Click(object sender, RoutedEventArgs e)
+        {
+            if (_trendsLibrary.Count == 0)
+            {
+                DarkMessageBox.Show("The trends library is empty — nothing to export.", "Export Library");
+                return;
+            }
+            var dlg = new SaveFileDialog
+            {
+                Title = "Export Trends Library",
+                Filter = "JSON backup (*.json)|*.json",
+                FileName = $"TrendsLibrary_backup_{DateTime.Now:yyyyMMdd}.json"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var dtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
+            {
+                Id = c.Id, Name = c.Name, RunsFolder = c.RunsFolder,
+                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput
+            }).ToList();
+
+            bool ok = AppDataManager.ExportTrendsLibrary(dtos, dlg.FileName);
+            if (ok)
+                DarkMessageBox.Show($"Exported {_trendsLibrary.Count} customer(s) to:\n{dlg.FileName}", "Export Complete");
+            else
+                DarkMessageBox.Show("Export failed — could not write the file.", "Export Failed");
+        }
+
+        private void TrendsLibraryImport_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new OpenFileDialog
+            {
+                Title = "Import Trends Library",
+                Filter = "JSON backup (*.json)|*.json|All Files (*.*)|*.*"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var existingDtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
+            {
+                Id = c.Id, Name = c.Name, RunsFolder = c.RunsFolder,
+                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput
+            }).ToList();
+
+            var (imported, error) = AppDataManager.ImportTrendsLibrary(dlg.FileName, existingDtos);
+            if (imported == null)
+            {
+                DarkMessageBox.Show($"Import failed:\n{error}", "Import Failed");
+                return;
+            }
+            if (imported.Count == 0)
+            {
+                DarkMessageBox.Show("No new customers found — all entries in the file already exist in your library.", "Nothing to Import");
+                return;
+            }
+
+            bool confirmed = DarkMessageBox.Confirm(
+                $"Import {imported.Count} new customer(s) into the trends library?\n\nExisting customers will not be affected.",
+                "Confirm Import");
+            if (!confirmed) return;
+
+            foreach (var dto in imported)
+                _trendsLibrary.Add(new TrendsCustomer
+                {
+                    Id = dto.Id, Name = dto.Name, RunsFolder = dto.RunsFolder,
+                    ReportsFolder = dto.ReportsFolder, LastGenerated = dto.LastGenerated, LastOutput = dto.LastOutput
+                });
+
+            SaveTrendsLibrary();
+            RefreshTrendsLibraryUI();
+            TrendsStatusLabel.Text = $"Imported {imported.Count} new customer(s).";
+            TrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+        }
+
+        // ── Global Export / Import ────────────────────────────────────────────
+
+        private void GlobalExport_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new SaveFileDialog
+            {
+                Title = "Export All — Backup",
+                Filter = "JSON backup (*.json)|*.json",
+                FileName = $"PTU_backup_{DateTime.Now:yyyyMMdd_HHmm}.json"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            SaveSettings(); // ensure in-memory settings are flushed first
+
+            var dtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
+            {
+                Id = c.Id, Name = c.Name, RunsFolder = c.RunsFolder,
+                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput
+            }).ToList();
+
+            bool ok = AppDataManager.ExportAll(_library, dtos, _settings, dlg.FileName);
+            if (ok)
+                DarkMessageBox.Show(
+                    $"Backup saved to:\n{dlg.FileName}\n\n" +
+                    $"Contains: {_library.Count} script(s), {_trendsLibrary.Count} customer(s), all UI settings.",
+                    "Backup Complete");
+            else
+                DarkMessageBox.Show("Backup failed — could not write the file.", "Backup Failed");
+        }
+
+        private void GlobalImport_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new OpenFileDialog
+            {
+                Title = "Import All — Restore from Backup",
+                Filter = "JSON backup (*.json)|*.json|All Files (*.*)|*.*"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            var existingDtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
+            {
+                Id = c.Id, Name = c.Name, RunsFolder = c.RunsFolder,
+                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput
+            }).ToList();
+
+            var result = AppDataManager.ImportAll(dlg.FileName, _library, existingDtos);
+
+            if (result.Error != null)
+            {
+                DarkMessageBox.Show($"Restore failed:\n{result.Error}", "Restore Failed");
+                return;
+            }
+
+            // Build a human-readable summary for the confirmation popup
+            var summary = new System.Text.StringBuilder();
+            summary.AppendLine($"Backup contains:");
+            summary.AppendLine($"  • {result.TotalScripts} script(s)  →  {result.NewScripts.Count} new (rest already exist)");
+            summary.AppendLine($"  • {result.TotalCustomers} customer(s)  →  {result.NewCustomers.Count} new (rest already exist)");
+            summary.AppendLine($"  • UI settings");
+            summary.AppendLine();
+            summary.AppendLine("Settings will be replaced. New library entries will be merged in.");
+            summary.AppendLine("Existing entries will NOT be removed or overwritten.");
+            summary.AppendLine();
+            summary.Append("Continue?");
+
+            bool confirmed = DarkMessageBox.Confirm(summary.ToString(), "Confirm Restore");
+            if (!confirmed) return;
+
+            // Apply scripts
+            if (result.NewScripts.Count > 0)
+            {
+                _library.AddRange(result.NewScripts);
+                SaveLibrary();
+                RefreshLibraryUI();
+            }
+
+            // Apply customers
+            if (result.NewCustomers.Count > 0)
+            {
+                foreach (var dto in result.NewCustomers)
+                    _trendsLibrary.Add(new TrendsCustomer
+                    {
+                        Id = dto.Id, Name = dto.Name, RunsFolder = dto.RunsFolder,
+                        ReportsFolder = dto.ReportsFolder, LastGenerated = dto.LastGenerated, LastOutput = dto.LastOutput
+                    });
+                SaveTrendsLibrary();
+                RefreshTrendsLibraryUI();
+            }
+
+            // Apply settings
+            if (result.Settings != null)
+            {
+                _settings = result.Settings;
+                AppDataManager.SaveSettings(_settings);
+                LoadSettings(); // re-apply to UI controls
+            }
+
+            DarkMessageBox.Show(
+                $"Restore complete.\n\n" +
+                $"  • {result.NewScripts.Count} new script(s) added\n" +
+                $"  • {result.NewCustomers.Count} new customer(s) added\n" +
+                $"  • UI settings restored",
+                "Restore Complete");
+        }
+
         // ── Log panel helpers ─────────────────────────────────
+
 
         private void ShowLogPanel(Border panel, ProgressBar progress, TextBlock log)
         {
