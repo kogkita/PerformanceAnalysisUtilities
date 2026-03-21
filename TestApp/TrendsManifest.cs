@@ -55,7 +55,7 @@ namespace TestApp
         {
             try
             {
-                var files = GetRunFiles(runsFolder, customerName);
+                var files = GetRunFiles(runsFolder);
                 var manifest = new Manifest
                 {
                     UpdatedAt = DateTime.Now,
@@ -80,7 +80,7 @@ namespace TestApp
         {
             try
             {
-                var live = GetRunFiles(runsFolder, customerName);
+                var live = GetRunFiles(runsFolder);
                 var saved = ReadManifest(runsFolder, customerName);
 
                 var added   = live.Except(saved, StringComparer.OrdinalIgnoreCase).ToList();
@@ -110,13 +110,12 @@ namespace TestApp
         /// Returns a sorted list of .xlsx filenames present in the folder,
         /// excluding the trends output file and the manifest itself.
         /// </summary>
-        private static List<string> GetRunFiles(string runsFolder, string customerName)
+        private static List<string> GetRunFiles(string runsFolder)
         {
-            string trendsFile = customerName + "_Trends.xlsx";
             return Directory.GetFiles(runsFolder, "*.xlsx", SearchOption.TopDirectoryOnly)
                 .Select(Path.GetFileName)
                 .Where(f => f != null
-                    && !f.Equals(trendsFile,        StringComparison.OrdinalIgnoreCase)
+                    && !f!.EndsWith("_Trends.xlsx", StringComparison.OrdinalIgnoreCase)
                     && !f.Equals(ManifestFileName,  StringComparison.OrdinalIgnoreCase))
                 .Cast<string>()
                 .OrderBy(f => f, StringComparer.OrdinalIgnoreCase)

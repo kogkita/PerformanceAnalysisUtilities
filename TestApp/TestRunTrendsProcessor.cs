@@ -46,9 +46,9 @@ namespace TestApp
 
     public static class TestRunTrendsProcessor
     {
-        public static Action<string>? Log { get; set; }
+        // Log is passed into Generate() — no static field, so concurrent customers do not race
 
-        private static void Write(string msg) => Log?.Invoke(msg);
+        private static void Write(Action<string>? log, string msg) => log?.Invoke(msg);
 
         private static int ParseSecs(string? t)
         {
@@ -71,16 +71,18 @@ namespace TestApp
 
         // ── Parse one input Excel file ────────────────────────────────────────
 
-        public static TrendRun? ParseRunFile(string xlsxPath)
+        public static TrendRun? ParseRunFile(string xlsxPath, Action<string>? log = null)
         {
             try
             {
                 ExcelPackage.License.SetNonCommercialPersonal("Test Run Trends");
 
-                // Copy to temp first — handles OneDrive/SharePoint locked files
+                // Copy to temp first — handles OneDrive/SharePoint locked files.
+                // Use a GUID prefix so concurrent customers processing the same
+                // filename never collide on the same temp path.
                 string tempPath = Path.Combine(Path.GetTempPath(),
-                    "TrendRun_" + Path.GetFileName(xlsxPath));
-                File.Copy(xlsxPath, tempPath, overwrite: true);
+                    $"TrendRun_{Guid.NewGuid():N}_{Path.GetFileName(xlsxPath)}");
+                File.Copy(xlsxPath, tempPath, overwrite: false);
 
                 using var pkg = new ExcelPackage(new FileInfo(tempPath));
                 var ws = pkg.Workbook.Worksheets.FirstOrDefault();
@@ -89,7 +91,7 @@ namespace TestApp
 
                 if (ws == null)
                 {
-                    Write($"  SKIP {Path.GetFileName(xlsxPath)}: no worksheets found");
+                    Write(log, $"  SKIP {Path.GetFileName(xlsxPath)}: no worksheets found");
                     return null;
                 }
 
@@ -150,18 +152,18 @@ namespace TestApp
                 }
 
                 run.RunDate = earliest != DateTime.MaxValue ? earliest : DateTime.MinValue;
-                // Use friendly display label (e.g. "FEB 26") derived from run number
+                // Use friendly display label (e.g. "FEB 26 #2") derived from run number
                 string rawLabel = !string.IsNullOrEmpty(run.RunNumber) ? run.RunNumber
                     : Path.GetFileNameWithoutExtension(xlsxPath);
-                run.Label = BuildDisplayLabel(rawLabel);
+                run.Label = BuildDisplayLabel(rawLabel, run.RunDate);
                 if (run.Label == rawLabel) run.Label = rawLabel;  // fallback
 
-                Write($"  Parsed: {run.Label} — {run.Total} cases, {run.Passed} pass, {run.Failed} fail, date {run.RunDate:dd MMM yyyy}");
+                Write(log, $"  Parsed: {run.Label} — {run.Total} cases, {run.Passed} pass, {run.Failed} fail, date {run.RunDate:dd MMM yyyy}");
                 return run;
             }
             catch (Exception ex)
             {
-                Write($"  ERROR parsing {Path.GetFileName(xlsxPath)}: {ex.Message}");
+                Write(log, $"  ERROR parsing {Path.GetFileName(xlsxPath)}: {ex.Message}");
                 return null;
             }
         }
@@ -199,62 +201,151 @@ namespace TestApp
             return 0;
         }
 
-        /// <summary>Returns a friendly label like "FEB 26" from a run number string.</summary>
-        private static string BuildDisplayLabel(string label)
+        /// <summary>
+        /// Returns a friendly label from a run number string.
+        /// e.g. "TRN_FEB_26_2" → "FEB 26 #2"
+        /// Falls back to the raw label if no pattern is found.
+        /// RunDate is used as additional context when the raw label is just a filename.
+        /// </summary>
+        private static string BuildDisplayLabel(string label, DateTime runDate = default)
         {
             var parts = label.Split('_');
             for (int i = 0; i < parts.Length - 1; i++)
-                if (MonthMap.ContainsKey(parts[i].ToUpper()) &&
-                    int.TryParse(parts[i + 1], out _))
-                    return parts[i].ToUpper() + " " + parts[i + 1];
+            {
+                if (MonthMap.ContainsKey(parts[i].ToUpper()) && int.TryParse(parts[i + 1], out _))
+                {
+                    string display = parts[i].ToUpper() + " " + parts[i + 1];
+                    // Append sequence number if present (e.g. TRN_FEB_26_2 → "FEB 26 #2")
+                    int seqIdx = i + 2;
+                    if (seqIdx < parts.Length && int.TryParse(parts[seqIdx], out int seq) && seq > 0)
+                        display += $" #{seq}";
+                    return display;
+                }
+            }
+            // No pattern match — use date if available, otherwise filename
+            if (runDate != default && runDate != DateTime.MinValue)
+                return runDate.ToString("dd MMM yyyy");
             return label;
         }
 
         // ── Main entry point ─────────────────────────────────────────────────
 
-        public static (bool Ok, string OutputPath, string Error) Generate(
+        public static (bool Ok, string OutputPath, string Error) Generate(Action<string>? log,
             string runsFolder, string customerName, string? reportsFolder = null, int failWindow = 3)
         {
+            // Merge UI log delegate with the global AppLogger so every Generate()
+            // call is captured in the app log file when logging is enabled.
+            var appLog = AppLogger.GetWriter($"Trends:{customerName}");
+            Action<string> combined = msg => { log?.Invoke(msg); appLog(msg); };
+
             try
             {
                 string outputFolder = string.IsNullOrEmpty(reportsFolder) ? runsFolder : reportsFolder;
                 if (!Directory.Exists(outputFolder))
                     Directory.CreateDirectory(outputFolder);
 
-                Write($"Scanning runs folder: {runsFolder}");
+                Write(combined, $"Scanning runs folder: {runsFolder}");
 
-                // Find and parse all input Excel files (exclude trends output and manifest)
+                // Find and parse all input Excel files.
+                // Exclude:
+                //   1. Any file ending in "_Trends.xlsx" — catches this customer's own
+                //      output AND any other customer's trends file that landed in the
+                //      same folder (e.g. when reports folder == runs folder).
+                //   2. The manifest JSON (not xlsx, but guard anyway).
                 string trendsFileName = customerName + "_Trends.xlsx";
-                var inputFiles = Directory.GetFiles(runsFolder, "*.xlsx", SearchOption.TopDirectoryOnly)
-                    .Where(f => !Path.GetFileName(f).Equals(trendsFileName, StringComparison.OrdinalIgnoreCase))
-                    .OrderBy(f => f)
+                var allXlsx = Directory.GetFiles(runsFolder, "*.xlsx", SearchOption.TopDirectoryOnly)
+                    .OrderBy(f => f).ToList();
+                var inputFiles = allXlsx
+                    .Where(f => !Path.GetFileName(f).EndsWith("_Trends.xlsx", StringComparison.OrdinalIgnoreCase))
                     .ToList();
 
                 if (inputFiles.Count == 0)
                     return (false, "", "No Excel files found in the selected folder.");
 
-                Write($"Found {inputFiles.Count} file(s)...");
+                Write(combined, $"Found {inputFiles.Count} file(s)...");
+
                 var runs = new List<TrendRun>();
                 foreach (var f in inputFiles)
                 {
-                    Write($"Reading {Path.GetFileName(f)}...");
-                    var run = ParseRunFile(f);
-                    if (run != null) runs.Add(run);
+                    Write(combined, $"Reading {Path.GetFileName(f)}...");
+                    var run = ParseRunFile(f, combined);
+                    if (run != null)
+                    {
+
+                        runs.Add(run);
+                    }
+                    // ParseRunFile already logs the skip reason
                 }
 
                 if (runs.Count == 0)
                     return (false, "", "No valid run files could be parsed.");
 
-                // Deduplicate: for same Month+Year keep only highest RunNumber
-                // Use RunNumber (original) not Label (display) for parsing
-                runs = runs
+                // ── Deduplication ─────────────────────────────────────────────
+                // Strategy:
+                //   1. Runs whose RunNumber matches TRN_MON_YY_N pattern → group by
+                //      Month+Year, keep the highest run-sequence number within each group.
+                //   2. Runs that don't match the pattern (key == 0) → treat each as
+                //      its own run, deduplicate only exact content duplicates
+                //      (same RunNumber AND same RunDate within a 1-day window).
+                //   3. Sort: recognised runs by date desc; unrecognised runs by
+                //      RunDate desc (or filename order as final fallback).
+                //   4. After dedup, ensure every label is unique — if two runs
+                //      produce the same display label, append the date to distinguish.
+
+                var recognised   = runs.Where(r => ParseMonthYearKey(r.RunNumber) != 0).ToList();
+                var unrecognised = runs.Where(r => ParseMonthYearKey(r.RunNumber) == 0).ToList();
+                Write(combined, $"Recognised pattern: {recognised.Count}  Unrecognised: {unrecognised.Count}");
+
+                // Dedup recognised: keep highest sequence per Month+Year
+                var dedupedRecognised = recognised
                     .GroupBy(r => ParseMonthYearKey(r.RunNumber))
-                    .Select(g => g.OrderByDescending(r => ParseRunNumber(r.RunNumber)).First())
-                    .OrderByDescending(r => ParseSortKey(r.RunNumber))  // newest first (left) → oldest last (right)
+                    .Select(g =>
+                    {
+                        var winner = g.OrderByDescending(r => ParseRunNumber(r.RunNumber)).First();
+                        var dropped = g.Where(r => r != winner).Select(r => r.RunNumber).ToList();
+                        if (dropped.Count > 0)
+                            Write(combined, $"  Dedup key={g.Key}: kept '{winner.RunNumber}', dropped [{string.Join(", ", dropped)}]");
+                        return winner;
+                    })
+                    .OrderByDescending(r => ParseSortKey(r.RunNumber))
                     .ToList();
 
-                Write($"After deduplication: {runs.Count} unique month(s)");
-                Write($"Loaded {runs.Count} run(s), building trends...");
+                // Dedup unrecognised: collapse runs with identical RunNumber + RunDate (±1 day)
+                var dedupedUnrecognised = new List<TrendRun>();
+                foreach (var r in unrecognised.OrderByDescending(r => r.RunDate))
+                {
+                    bool isDuplicate = dedupedUnrecognised.Any(existing =>
+                        string.Equals(existing.RunNumber, r.RunNumber, StringComparison.OrdinalIgnoreCase)
+                        && existing.RunDate != DateTime.MinValue
+                        && r.RunDate != DateTime.MinValue
+                        && Math.Abs((existing.RunDate - r.RunDate).TotalDays) <= 1);
+
+                    if (!isDuplicate)
+                        dedupedUnrecognised.Add(r);
+                }
+
+                // Merge: recognised runs first (they have reliable month-year keys),
+                // then unrecognised sorted by date desc
+                runs = dedupedRecognised
+                    .Concat(dedupedUnrecognised)
+                    .ToList();
+
+                // ── Ensure label uniqueness ───────────────────────────────────
+                // If two runs share the same display label, append short date suffix
+                var labelCounts = runs.GroupBy(r => r.Label).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+                foreach (var r in runs)
+                {
+                    if (labelCounts.Contains(r.Label))
+                    {
+                        string dateSuffix = r.RunDate != DateTime.MinValue
+                            ? r.RunDate.ToString("ddMMM")
+                            : Path.GetFileNameWithoutExtension(r.RunNumber)[..Math.Min(6, r.RunNumber.Length)];
+                        r.Label = $"{r.Label} ({dateSuffix})";
+                    }
+                }
+
+                Write(combined, $"After deduplication: {runs.Count} unique run(s) ({dedupedRecognised.Count} pattern-matched, {dedupedUnrecognised.Count} by date).");
+                Write(combined, $"Loaded {runs.Count} run(s), building trends...");
 
                 // Build trend output
                 string outputPath = Path.Combine(outputFolder, trendsFileName);
@@ -267,11 +358,12 @@ namespace TestApp
                 WriteChartsSheet(pkg, runs, customerName);
 
                 pkg.SaveAs(new FileInfo(outputPath));
-                Write($"Done — saved to: {outputPath}");
+                Write(combined, $"Done — saved to: {outputPath}");
                 return (true, outputPath, "");
             }
             catch (Exception ex)
             {
+                appLog($"EXCEPTION: {ex.Message}");
                 return (false, "", ex.Message);
             }
         }

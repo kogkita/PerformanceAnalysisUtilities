@@ -14,7 +14,7 @@ namespace TestApp
     {
         public const int CurrentScriptLibraryVersion  = 1;
         public const int CurrentTrendsLibraryVersion  = 1;
-        public const int CurrentSettingsVersion       = 1;
+        public const int CurrentSettingsVersion       = 2;
 
         private static readonly string AppDataDir = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
@@ -268,6 +268,10 @@ namespace TestApp
 
             // ── Last-used folders (per feature) ──────────────────────────────
             public string LastNmonOutputDir  { get; set; } = "";
+
+            // ── App-level logging ─────────────────────────────────────────
+            public bool   AppLogEnabled      { get; set; } = false;
+            public string AppLogFolder       { get; set; } = "";
         }
 
         public static AppSettings LoadSettings()
@@ -296,7 +300,7 @@ namespace TestApp
 
         private static AppSettings MigrateSettings(AppSettings s, int fromVersion)
         {
-            // Add migration steps here as needed.
+            // v1 → v2: AppLogEnabled and AppLogFolder added (default false / empty — safe to leave as-is)
             return s;
         }
 

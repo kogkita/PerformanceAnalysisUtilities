@@ -144,6 +144,7 @@ namespace TestApp
             PageCompare.Visibility      = Visibility.Collapsed;
             PageScriptRunner.Visibility   = Visibility.Collapsed;
             PageTestRunTrends.Visibility  = Visibility.Collapsed;
+            PageSettings.Visibility       = Visibility.Collapsed;
             page.Visibility = Visibility.Visible;
         }
 
@@ -152,6 +153,9 @@ namespace TestApp
 
         private void NavTestRunTrends_Click(object sender, RoutedEventArgs e)
             => SetActivePage(NavTestRunTrends, PageTestRunTrends);
+
+        private void NavSettings_Click(object sender, RoutedEventArgs e)
+            => SetActivePage(NavSettings, PageSettings);
 
         private void NavConvert_Click(object sender, RoutedEventArgs e)
             => SetActivePage(NavConvert, PageConvert);
@@ -2413,7 +2417,7 @@ namespace TestApp
 
             System.Threading.Tasks.Task.Run(() =>
             {
-                TestRunTrendsProcessor.Log = msg =>
+                Action<string> log = msg =>
                     Dispatcher.Invoke(() =>
                     {
                         if (TrendsLog.Text.Length > 0) TrendsLog.Text += "\n";
@@ -2421,7 +2425,7 @@ namespace TestApp
                     });
 
                 var (ok, outputPath, error) =
-                    TestRunTrendsProcessor.Generate(runsFolder, customerName, reportsFolder, fw);
+                    TestRunTrendsProcessor.Generate(log, runsFolder, customerName, reportsFolder, fw);
 
                 Dispatcher.Invoke(() =>
                 {
@@ -2689,16 +2693,16 @@ namespace TestApp
             // Run generation for this customer in background
             System.Threading.Tasks.Task.Run(() =>
             {
-                TestRunTrendsProcessor.Log = isCurrent
-                    ? (msg => Dispatcher.Invoke(() =>
+                Action<string>? log = isCurrent
+                    ? msg => Dispatcher.Invoke(() =>
                     {
                         if (TrendsLog.Text.Length > 0) TrendsLog.Text += "\n";
                         TrendsLog.Text += $"[{DateTime.Now:HH:mm:ss}]  {msg}";
-                    }))
-                    : _ => { }; // silent for background customers
+                    })
+                    : null; // background customers: no UI log, no race condition
 
                 var (ok, outputPath, error) =
-                    TestRunTrendsProcessor.Generate(runsFolder, name, reportsFolder, fw);
+                    TestRunTrendsProcessor.Generate(log, runsFolder, name, reportsFolder, fw);
 
                 Dispatcher.Invoke(() =>
                 {
@@ -2744,6 +2748,41 @@ namespace TestApp
 
         private AppDataManager.AppSettings _settings = new();
 
+        // ── Settings page handlers ────────────────────────────────────────────
+
+        private void AppLogSettings_Changed(object sender, System.Windows.RoutedEventArgs e)
+        {
+            _settings.AppLogEnabled = AppLogEnabledCheck?.IsChecked == true;
+            _settings.AppLogFolder  = AppLogFolderBox?.Text?.Trim() ?? "";
+            AppDataManager.SaveSettings(_settings);
+            AppLogger.Configure(_settings.AppLogEnabled, _settings.AppLogFolder);
+
+            if (AppLogStatusLabel == null) return;
+            if (_settings.AppLogEnabled && !string.IsNullOrEmpty(_settings.AppLogFolder))
+            {
+                AppLogStatusLabel.Text       = $"Logging enabled → {_settings.AppLogFolder}";
+                AppLogStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+            }
+            else if (_settings.AppLogEnabled && string.IsNullOrEmpty(_settings.AppLogFolder))
+            {
+                AppLogStatusLabel.Text       = "Select a log folder to activate logging.";
+                AppLogStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xFB, 0xBF, 0x24));
+            }
+            else
+            {
+                AppLogStatusLabel.Text       = "Logging disabled.";
+                AppLogStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x6B, 0x7A, 0x99));
+            }
+        }
+
+        private void AppLogFolderBrowse_Click(object sender, RoutedEventArgs e)
+        {
+            string folder = BrowseFolder("Select folder for log files");
+            if (string.IsNullOrEmpty(folder)) return;
+            if (AppLogFolderBox != null) AppLogFolderBox.Text = folder;
+            AppLogSettings_Changed(sender, e);
+        }
+
         private void LoadSettings()
         {
             _settings = AppDataManager.LoadSettings();
@@ -2761,6 +2800,10 @@ namespace TestApp
             if (NmonOutDirBox != null && !string.IsNullOrEmpty(_settings.LastNmonOutputDir))
                 NmonOutDirBox.Text = _settings.LastNmonOutputDir;
 
+            if (AppLogEnabledCheck != null) AppLogEnabledCheck.IsChecked = _settings.AppLogEnabled;
+            if (AppLogFolderBox   != null) AppLogFolderBox.Text          = _settings.AppLogFolder;
+            AppLogger.Configure(_settings.AppLogEnabled, _settings.AppLogFolder);
+
             // Auto-watch restore is handled by InitTrayOnLoad() after library is loaded
         }
 
@@ -2776,7 +2819,10 @@ namespace TestApp
             _settings.CmpSlaMs             = CmpSlaTextBox?.Text?.Trim() ?? "";
             _settings.TrendsFailWindow     = TrendsFailWindowBox?.Text?.Trim() ?? "3";
             _settings.LastNmonOutputDir    = NmonOutDirBox?.Text?.Trim() ?? "";
+            _settings.AppLogEnabled        = AppLogEnabledCheck?.IsChecked == true;
+            _settings.AppLogFolder         = AppLogFolderBox?.Text?.Trim() ?? "";
             AppDataManager.SaveSettings(_settings);
+            AppLogger.Configure(_settings.AppLogEnabled, _settings.AppLogFolder);
         }
 
         // Save settings whenever the window closes
@@ -2929,6 +2975,88 @@ namespace TestApp
             SaveTrendsLibrary();
             RefreshTrendsLibraryUI();
             TrendsStatusLabel.Text = $"Imported {imported.Count} new customer(s).";
+            TrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+        }
+
+        // ── Bulk Import from root folder ─────────────────────────────────────
+
+        private void TrendsBulkImport_Click(object sender, RoutedEventArgs e)
+        {
+            // Step 1: browse for root customers folder
+            string rootFolder = BrowseFolder("Select root folder containing customer subfolders");
+            if (string.IsNullOrEmpty(rootFolder) || !Directory.Exists(rootFolder)) return;
+
+            var subfolders = Directory.GetDirectories(rootFolder, "*", SearchOption.TopDirectoryOnly)
+                .OrderBy(d => d)
+                .ToList();
+
+            if (subfolders.Count == 0)
+            {
+                DarkMessageBox.Show("No subfolders found in the selected folder.", "Bulk Import");
+                return;
+            }
+
+            // Skip folders already in library (by name)
+            var existingNames = new HashSet<string>(
+                _trendsLibrary.Select(c => c.Name), StringComparer.OrdinalIgnoreCase);
+
+            var toAdd = subfolders
+                .Where(d => !existingNames.Contains(Path.GetFileName(d)))
+                .ToList();
+
+            if (toAdd.Count == 0)
+            {
+                DarkMessageBox.Show(
+                    "All subfolders in that location are already in the library.",
+                    "Bulk Import — Nothing New");
+                return;
+            }
+
+            // Step 2: show the bulk-import options dialog
+            var dialog = new BulkImportOptionsDialog(rootFolder, toAdd)
+            {
+                Owner = this
+            };
+            if (dialog.ShowDialog() != true) return;
+
+            string reportsMode   = dialog.ReportsMode;     // "same" | "shared" | "subfolder"
+            string sharedReports = dialog.SharedReportsFolder;
+
+            int added = 0;
+            foreach (var folder in toAdd)
+            {
+                string name = Path.GetFileName(folder);
+
+                string reportsFolder = reportsMode switch
+                {
+                    "same"      => folder,
+                    "shared"    => sharedReports,
+                    "subfolder" => Path.Combine(sharedReports, name),
+                    _           => folder
+                };
+
+                // Ensure per-customer subfolder exists when that mode is chosen
+                if (reportsMode == "subfolder" && !Directory.Exists(reportsFolder))
+                {
+                    try { Directory.CreateDirectory(reportsFolder); } catch { /* non-fatal */ }
+                }
+
+                _trendsLibrary.Add(new TrendsCustomer
+                {
+                    Name          = name,
+                    RunsFolder    = folder,
+                    ReportsFolder = reportsFolder
+                });
+                added++;
+            }
+
+            SaveTrendsLibrary();
+            RefreshTrendsLibraryUI();
+
+            int skipped = subfolders.Count - toAdd.Count;
+            string msg = $"Added {added} customer(s) to the library.";
+            if (skipped > 0) msg += $"\n{skipped} already existed and were skipped.";
+            TrendsStatusLabel.Text = msg;
             TrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
         }
 
