@@ -13,7 +13,7 @@ namespace TestApp
     public static class AppDataManager
     {
         public const int CurrentScriptLibraryVersion  = 1;
-        public const int CurrentTrendsLibraryVersion  = 1;
+        public const int CurrentTrendsLibraryVersion  = 2;
         public const int CurrentSettingsVersion       = 2;
 
         private static readonly string AppDataDir = Path.Combine(
@@ -155,6 +155,10 @@ namespace TestApp
             public string    ReportsFolder  { get; set; } = "";
             public DateTime? LastGenerated  { get; set; } = null;
             public string?   LastOutput     { get; set; } = null;
+            /// <summary>
+            /// Per-customer fail window override. 0 = use the global setting.
+            /// </summary>
+            public int       FailWindow     { get; set; } = 0;
         }
 
         public static List<TrendsCustomerDto> LoadTrendsLibrary()
@@ -233,7 +237,11 @@ namespace TestApp
         private static List<TrendsCustomerDto> MigrateTrendsLibrary(
             List<TrendsCustomerDto> entries, int fromVersion)
         {
-            // Add migration steps here as needed.
+            // v0/v1 → v2: FailWindow field added.
+            // Default of 0 means "use global setting" — preserves existing behaviour.
+            if (fromVersion < 2)
+                foreach (var e in entries)
+                    if (e.FailWindow == 0) { /* already the correct default — no action */ }
             return entries;
         }
 

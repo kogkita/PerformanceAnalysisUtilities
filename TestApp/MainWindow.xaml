@@ -2359,6 +2359,14 @@
                                                     Height="24" Padding="8,0" Margin="0,0,4,0"
                                                     ToolTip="Start auto-watch for all library customers at once"
                                                     Click="WatchAllBtn_Click"/>
+                                            <Button x:Name="TrendsGenerateAllBtn"
+                                                    Content="&#x26A1; Generate All"
+                                                    Style="{StaticResource ActionButtonStyle}"
+                                                    Background="#1E2640" Foreground="#34D399"
+                                                    FontSize="10" FontWeight="SemiBold"
+                                                    Height="24" Padding="8,0" Margin="0,0,4,0"
+                                                    ToolTip="Regenerate trends for all library customers now, in parallel"
+                                                    Click="TrendsGenerateAll_Click"/>
                                             <Button Content="+ Add"
                                                     x:Name="TrendsLibraryAddBtn"
                                                     Style="{StaticResource ActionButtonStyle}"
@@ -2441,7 +2449,7 @@
                                                             <Border.ToolTip>
                                                                 <ToolTip MaxWidth="280">
                                                                     <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#CBD5E1"
-                                                                               Text="Number of most recent runs to count failures in column B. E.g. 3 means: how many times did this test fail in the last 3 runs?"/>
+                                                                               Text="Number of most recent runs to count failures in column B. E.g. 3 means: how many times did this test fail in the last 3 runs? This value is saved per customer when you click + Add or Update Library."/>
                                                                 </ToolTip>
                                                             </Border.ToolTip>
                                                             <TextBlock Text="i" FontSize="9" FontWeight="Bold"
@@ -2455,7 +2463,8 @@
                                                              BorderBrush="#252D42" FontSize="13" Height="34"
                                                              Padding="10,0" VerticalContentAlignment="Center"
                                                              FontFamily="Consolas, Segoe UI Mono"
-                                                             TextAlignment="Center"/>
+                                                             TextAlignment="Center"
+                                                             TextChanged="TrendsField_Changed"/>
                                                 </StackPanel>
                                             </Grid>
 

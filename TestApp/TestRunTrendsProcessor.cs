@@ -37,9 +37,10 @@ namespace TestApp
     public class TrendFlag
     {
         public string TestCase { get; set; } = "";
-        public string Type { get; set; } = "";   // FAIL / NEW / MISSING / SLOWER / FASTER
+        public string Type     { get; set; } = "";   // STREAK / FAIL / NEW / MISSING / SLOWER / FASTER
         public string RunLabel { get; set; } = "";
-        public string Detail { get; set; } = "";
+        public string Detail   { get; set; } = "";
+        public int    Streak   { get; set; } = 0;    // consecutive fail count (STREAK flags only)
     }
 
     // ── Main processor ────────────────────────────────────────────────────────
@@ -508,9 +509,13 @@ namespace TestApp
             ws.Cells[1, 2].Value = $"Failures in Last {Math.Min(failWindow, runs.Count)} Runs";
             StyleHdr(ws.Cells[1, 2], Color.FromArgb(0x1E, 0x40, 0xAF));
 
+            ws.Cells[1, 3].Value = "Current\nStreak";
+            StyleHdr(ws.Cells[1, 3], Color.FromArgb(0x1E, 0x40, 0xAF));
+
+            // Run columns start at col 4 (shifted right by 1 for the Streak column)
             for (int i = 0; i < runs.Count; i++)
             {
-                int sc = 3 + i * 2;
+                int sc = 4 + i * 2;
                 ws.Cells[1, sc].Value = $"{runs[i].Label}\nStatus";
                 StyleHdr(ws.Cells[1, sc], Color.FromArgb(0x1E, 0x40, 0xAF));
 
@@ -521,19 +526,35 @@ namespace TestApp
             // Row height for the header to accommodate the two-line text
             ws.Row(1).Height = 30;
 
+            // Pre-compute streak for every test case:
+            // streak = how many consecutive runs from newest (index 0) are FAIL
+            var streakMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var n in allCases)
+            {
+                int s = 0;
+                for (int i = 0; i < runs.Count; i++)
+                {
+                    if (lookup[i].TryGetValue(n, out var tc) && tc.Status == "FAIL")
+                        s++;
+                    else
+                        break;
+                }
+                streakMap[n] = s;
+            }
+
             // Data rows (now start at row 2, not row 3)
             for (int ri = 0; ri < allCases.Count; ri++)
             {
                 string caseName = allCases[ri];
                 int row = ri + 2;
                 bool alt = ri % 2 == 1;
+                var rowBg = alt ? Color.FromArgb(0xF5, 0xF7, 0xFF) : Color.White;
 
                 ws.Cells[row, 1].Value = caseName;
                 ws.Cells[row, 1].Style.Fill.PatternType = ExcelFillStyle.Solid;
-                ws.Cells[row, 1].Style.Fill.BackgroundColor.SetColor(
-                    alt ? Color.FromArgb(0xF5, 0xF7, 0xFF) : Color.White);
+                ws.Cells[row, 1].Style.Fill.BackgroundColor.SetColor(rowBg);
 
-                // Col B: fail count within the window
+                // Col 2: fail count within the window
                 int failsInWindow = windowRuns.Count(wr =>
                     wr.TryGetValue(caseName, out var wc) && wc.Status == "FAIL");
                 ws.Cells[row, 2].Value = failsInWindow;
@@ -547,14 +568,37 @@ namespace TestApp
                 }
                 else
                 {
-                    ws.Cells[row, 2].Style.Fill.BackgroundColor.SetColor(
-                        alt ? Color.FromArgb(0xF5, 0xF7, 0xFF) : Color.White);
+                    ws.Cells[row, 2].Style.Fill.BackgroundColor.SetColor(rowBg);
+                }
+
+                // Col 3: current consecutive fail streak (0 = not currently failing)
+                int streak = streakMap[caseName];
+                ws.Cells[row, 3].Value = streak;
+                ws.Cells[row, 3].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                ws.Cells[row, 3].Style.Fill.PatternType = ExcelFillStyle.Solid;
+                if (streak >= 2)
+                {
+                    // Deep red — actively failing multiple runs in a row
+                    ws.Cells[row, 3].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xCC, 0x00, 0x00));
+                    ws.Cells[row, 3].Style.Font.Color.SetColor(Color.White);
+                    ws.Cells[row, 3].Style.Font.Bold = true;
+                }
+                else if (streak == 1)
+                {
+                    // Light red — failing in the most recent run
+                    ws.Cells[row, 3].Style.Fill.BackgroundColor.SetColor(Color.FromArgb(0xFE, 0xE2, 0xE2));
+                    ws.Cells[row, 3].Style.Font.Color.SetColor(Color.FromArgb(0x99, 0x1B, 0x1B));
+                    ws.Cells[row, 3].Style.Font.Bold = true;
+                }
+                else
+                {
+                    ws.Cells[row, 3].Style.Fill.BackgroundColor.SetColor(rowBg);
                 }
 
                 for (int i = 0; i < runs.Count; i++)
                 {
-                    int sc = 3 + i * 2;
-                    var bg = alt ? Color.FromArgb(0xF5, 0xF7, 0xFF) : Color.White;
+                    int sc = 4 + i * 2;
+                    var bg = rowBg;
 
                     if (lookup[i].TryGetValue(caseName, out var tc))
                     {
@@ -617,18 +661,19 @@ namespace TestApp
 
             ws.Column(1).Width = 52;
             ws.Column(2).Width = 14;   // Failures window col
+            ws.Column(3).Width = 10;   // Current Streak col
             for (int i = 0; i < runs.Count; i++)
             {
-                ws.Column(3 + i * 2).Width = 10;
-                ws.Column(4 + i * 2).Width = 12;
+                ws.Column(4 + i * 2).Width = 10;
+                ws.Column(5 + i * 2).Width = 12;
             }
 
             // Autofilter on the single header row
-            int lastCol = 2 + runs.Count * 2;
+            int lastCol = 3 + runs.Count * 2;
             string lastColLetter = GetColumnLetter(lastCol);
             ws.Cells[$"A1:{lastColLetter}1"].AutoFilter = true;
 
-            ws.View.FreezePanes(2, 3);
+            ws.View.FreezePanes(2, 4);   // freeze Test Case, Failures, Streak cols
         }
 
         // ── Sheet 3: Flags ────────────────────────────────────────────────────
@@ -658,8 +703,45 @@ namespace TestApp
             var allNames = runs.SelectMany(r => r.Cases.Select(c => c.Name))
                 .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
+            // ── Pass 1: compute consecutive fail streak per test ──────────────
+            // runs[0] = newest, runs[N-1] = oldest.
+            // Streak = how many consecutive runs from index 0 onward are FAIL.
+            var streaks = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
             foreach (var name in allNames)
             {
+                int streak = 0;
+                for (int i = 0; i < runs.Count; i++)
+                {
+                    if (lookups[i].TryGetValue(name, out var tc) && tc.Status == "FAIL")
+                        streak++;
+                    else
+                        break; // first non-fail breaks the streak from newest end
+                }
+                streaks[name] = streak;
+            }
+
+            // ── Pass 2: build all flags ───────────────────────────────────────
+            foreach (var name in allNames)
+            {
+                // Emit one STREAK flag if the test has failed ≥ 2 consecutive runs
+                int streak = streaks[name];
+                if (streak >= 2)
+                {
+                    // "since" label = the oldest run in the streak
+                    string sinceLabel = runs[Math.Min(streak - 1, runs.Count - 1)].Label;
+                    string streakDetail = streak == runs.Count
+                        ? $"{streak} consecutive run(s) — entire history"
+                        : $"{streak} consecutive run(s) — since {sinceLabel}";
+                    flags.Add(new TrendFlag
+                    {
+                        TestCase = name,
+                        Type     = "STREAK",
+                        RunLabel = runs[0].Label,   // most recent run
+                        Detail   = streakDetail,
+                        Streak   = streak,
+                    });
+                }
+
                 for (int i = 0; i < runs.Count; i++)
                 {
                     lookups[i].TryGetValue(name, out var cur);
@@ -685,19 +767,36 @@ namespace TestApp
                 }
             }
 
-            // Sort: FAIL first, then MISSING, NEW, SLOWER, FASTER
-            var order = new Dictionary<string, int> { { "FAIL", 0 }, { "MISSING", 1 }, { "NEW", 2 }, { "SLOWER", 3 }, { "FASTER", 4 } };
-            flags = flags.OrderBy(f => order.GetValueOrDefault(f.Type, 9)).ThenBy(f => f.TestCase).ToList();
+            // Sort: STREAK first (by streak length desc), then FAIL, MISSING, NEW, SLOWER, FASTER
+            var order = new Dictionary<string, int>
+            {
+                { "STREAK",  0 },
+                { "FAIL",    1 },
+                { "MISSING", 2 },
+                { "NEW",     3 },
+                { "SLOWER",  4 },
+                { "FASTER",  5 },
+            };
+            flags = flags
+                .OrderBy(f => order.GetValueOrDefault(f.Type, 9))
+                .ThenByDescending(f => f.Streak)   // longer streaks first within STREAK group
+                .ThenBy(f => f.TestCase)
+                .ToList();
 
-            // Header
-            var headers = new[] { "Type", "Test Case", "Run", "Detail" };
+            // ── Header (5 cols now: Type, Test Case, Run, Streak, Detail) ─────
+            var headers = new[] { "Type", "Test Case", "Run", "Streak", "Detail" };
             var hColors = new Dictionary<string, Color>
             {
+                {"STREAK",  Color.FromArgb(0xCC, 0x00, 0x00)},  // deep red fill
                 {"FAIL",    Color.FromArgb(0xFF, 0xE4, 0xE4)},
                 {"MISSING", Color.FromArgb(0xFF, 0xF3, 0xCD)},
                 {"NEW",     Color.FromArgb(0xD1, 0xFA, 0xE5)},
                 {"SLOWER",  Color.FromArgb(0xFF, 0xF3, 0xCD)},
                 {"FASTER",  Color.FromArgb(0xD1, 0xFA, 0xE5)},
+            };
+            var hTextColors = new Dictionary<string, Color>
+            {
+                {"STREAK", Color.White},
             };
 
             for (int c = 0; c < headers.Length; c++)
@@ -711,27 +810,41 @@ namespace TestApp
 
             for (int i = 0; i < flags.Count; i++)
             {
-                var f = flags[i];
+                var f   = flags[i];
                 int row = i + 2;
-                var bg = hColors.GetValueOrDefault(f.Type, Color.White);
+                var bg  = hColors.GetValueOrDefault(f.Type, Color.White);
+                bool isStreak = f.Type == "STREAK";
 
                 ws.Cells[row, 1].Value = f.Type;
                 ws.Cells[row, 1].Style.Font.Bold = true;
                 ws.Cells[row, 2].Value = f.TestCase;
                 ws.Cells[row, 3].Value = f.RunLabel;
-                ws.Cells[row, 4].Value = f.Detail;
 
-                for (int c = 1; c <= 4; c++)
+                // Col 4: streak count (only for STREAK rows, blank otherwise)
+                if (isStreak)
+                {
+                    ws.Cells[row, 4].Value = f.Streak;
+                    ws.Cells[row, 4].Style.Font.Bold = true;
+                    ws.Cells[row, 4].Style.HorizontalAlignment = ExcelHorizontalAlignment.Center;
+                }
+
+                ws.Cells[row, 5].Value = f.Detail;
+
+                for (int c = 1; c <= 5; c++)
                 {
                     ws.Cells[row, c].Style.Fill.PatternType = ExcelFillStyle.Solid;
                     ws.Cells[row, c].Style.Fill.BackgroundColor.SetColor(bg);
+
+                    if (isStreak)
+                        ws.Cells[row, c].Style.Font.Color.SetColor(Color.White);
                 }
             }
 
             ws.Column(1).Width = 12;
             ws.Column(2).Width = 52;
             ws.Column(3).Width = 22;
-            ws.Column(4).Width = 55;
+            ws.Column(4).Width = 10;   // Streak count
+            ws.Column(5).Width = 55;
         }
 
         // ── Sheet 4: Charts ───────────────────────────────────────────────────

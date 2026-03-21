@@ -2101,6 +2101,8 @@ namespace TestApp
             public string ReportsFolder { get; set; } = "";
             public DateTime? LastGenerated { get; set; } = null;
             public string?   LastOutput    { get; set; } = null;
+            /// <summary>Per-customer fail window. 0 = use the global setting.</summary>
+            public int       FailWindow    { get; set; } = 0;
         }
 
         private List<TrendsCustomer> _trendsLibrary = new();
@@ -2118,6 +2120,7 @@ namespace TestApp
                 ReportsFolder = d.ReportsFolder,
                 LastGenerated = d.LastGenerated,
                 LastOutput    = d.LastOutput,
+                FailWindow    = d.FailWindow,
             }).ToList();
             RefreshTrendsLibraryUI();
         }
@@ -2132,6 +2135,7 @@ namespace TestApp
                 ReportsFolder = c.ReportsFolder,
                 LastGenerated = c.LastGenerated,
                 LastOutput    = c.LastOutput,
+                FailWindow    = c.FailWindow,
             }).ToList();
             AppDataManager.SaveTrendsLibrary(dtos);
         }
@@ -2259,6 +2263,10 @@ namespace TestApp
             TrendsCustomerNameBox.Text = c.Name;
             _trendsRunsFolder    = c.RunsFolder;
             _trendsReportsFolder = c.ReportsFolder;
+            // Load per-customer fail window; 0 means "use global" so leave box showing global value
+            TrendsFailWindowBox.Text = c.FailWindow > 0
+                ? c.FailWindow.ToString()
+                : _settings.TrendsFailWindow;
             TrendsRunsFolderLabel.Text = string.IsNullOrEmpty(c.RunsFolder) ? "Not set" : c.RunsFolder;
             TrendsRunsFolderLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
                 string.IsNullOrEmpty(c.RunsFolder) ? "#4A5F88" : "#CBD5E1"));
@@ -2266,6 +2274,11 @@ namespace TestApp
             TrendsReportsFolderLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
                 string.IsNullOrEmpty(c.ReportsFolder) ? "#4A5F88" : "#CBD5E1"));
             TrendsUpdateLibraryBtn.Visibility = Visibility.Collapsed;
+
+            // Clear any stale status message from the previously loaded customer
+            // (e.g. "Unsaved changes — OtherCustomer" must not linger after switching)
+            TrendsStatusLabel.Text = "";
+
             UpdateTrendsFilesCount();
 
             _suppressDirtyTracking = false;
@@ -2294,6 +2307,8 @@ namespace TestApp
             existing.Name          = TrendsCustomerNameBox.Text.Trim();
             existing.RunsFolder    = _trendsRunsFolder    ?? "";
             existing.ReportsFolder = _trendsReportsFolder ?? "";
+            existing.FailWindow    = int.TryParse(TrendsFailWindowBox.Text.Trim(), out int ufv) && ufv >= 1
+                ? ufv : 0;
 
             SaveTrendsLibrary();
             RefreshTrendsLibraryUI();
@@ -2314,12 +2329,14 @@ namespace TestApp
                     "Missing Info");
                 return;
             }
+            int addFw = int.TryParse(TrendsFailWindowBox.Text.Trim(), out int afv) && afv >= 1 ? afv : 0;
             var existing = _trendsLibrary.FirstOrDefault(c =>
                 c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
             if (existing != null)
             {
                 existing.RunsFolder     = _trendsRunsFolder;
                 existing.ReportsFolder  = _trendsReportsFolder ?? "";
+                existing.FailWindow     = addFw;
             }
             else
             {
@@ -2327,7 +2344,8 @@ namespace TestApp
                 {
                     Name          = name,
                     RunsFolder    = _trendsRunsFolder,
-                    ReportsFolder = _trendsReportsFolder ?? ""
+                    ReportsFolder = _trendsReportsFolder ?? "",
+                    FailWindow    = addFw,
                 });
             }
             SaveTrendsLibrary();
@@ -2401,6 +2419,9 @@ namespace TestApp
 
             if (!int.TryParse(TrendsFailWindowBox.Text.Trim(), out int failWindow) || failWindow < 1)
                 failWindow = 3;
+            // If the active customer has its own override, use that
+            if (_activeTrendsCustomer?.FailWindow > 0)
+                failWindow = _activeTrendsCustomer.FailWindow;
 
             string reportsFolder = string.IsNullOrEmpty(_trendsReportsFolder)
                 ? _trendsRunsFolder : _trendsReportsFolder;
@@ -2462,6 +2483,114 @@ namespace TestApp
                     onComplete?.Invoke(ok);
                 });
             });
+        }
+
+        // ── Generate All ──────────────────────────────────────────────────────
+
+        /// <summary>
+        /// Regenerates trends for every valid library customer in parallel.
+        /// Customers already being generated (by a watch tick) are skipped.
+        /// The button label shows live progress (e.g. "Generating 2/5…") and
+        /// reverts to "⚡ Generate All" once all tasks complete.
+        /// </summary>
+        private async void TrendsGenerateAll_Click(object sender, RoutedEventArgs e)
+        {
+            var eligible = _trendsLibrary
+                .Where(c => !string.IsNullOrEmpty(c.RunsFolder)
+                         && System.IO.Directory.Exists(c.RunsFolder)
+                         && !_generatingIds.Contains(c.Id))
+                .ToList();
+
+            if (eligible.Count == 0)
+            {
+                DarkMessageBox.Show(
+                    "No customers are ready to generate.\n\nMake sure each customer has a valid Runs folder set.",
+                    "Generate All");
+                return;
+            }
+
+            // Disable button and show progress label
+            TrendsGenerateAllBtn.IsEnabled = false;
+            TrendsGenerateAllBtn.Content   = $"Generating 0/{eligible.Count}…";
+            TrendsGenerateAllBtn.Foreground =
+                new SolidColorBrush((Color)ColorConverter.ConvertFromString("#FBBF24"));
+
+            int completed = 0;
+            int succeeded = 0;
+            var failedNames = new System.Collections.Generic.List<string>();
+            var tasks = new System.Collections.Generic.List<System.Threading.Tasks.Task>();
+
+            foreach (var customer in eligible)
+            {
+                // Snapshot everything needed — captures correct values per iteration
+                var c            = customer;
+                string runs      = c.RunsFolder;
+                string name      = c.Name;
+                string reports   = string.IsNullOrEmpty(c.ReportsFolder) ? runs : c.ReportsFolder;
+                int fw           = c.FailWindow > 0
+                    ? c.FailWindow
+                    : (int.TryParse(_settings.TrendsFailWindow, out int gfw) && gfw >= 1 ? gfw : 3);
+
+                _generatingIds.Add(c.Id);
+
+                var task = System.Threading.Tasks.Task.Run(() =>
+                {
+                    // No UI log delegate — concurrent multi-customer output would interleave
+                    // Everything goes to the app log file if logging is enabled
+                    var (ok, outputPath, error) =
+                        TestRunTrendsProcessor.Generate(null, runs, name, reports, fw);
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        _generatingIds.Remove(c.Id);
+                        completed++;
+
+                        if (ok)
+                        {
+                            succeeded++;
+                            var entry = _trendsLibrary.FirstOrDefault(x => x.Id == c.Id);
+                            if (entry != null)
+                            { entry.LastGenerated = DateTime.Now; entry.LastOutput = outputPath; }
+                        }
+                        else
+                        {
+                            failedNames.Add(name);
+                        }
+
+                        // Update button progress label
+                        TrendsGenerateAllBtn.Content =
+                            completed < eligible.Count
+                                ? $"Generating {completed}/{eligible.Count}…"
+                                : "⚡ Generate All";
+                    });
+                });
+
+                tasks.Add(task);
+            }
+
+            // Await all tasks off the UI thread so the window stays responsive
+            await System.Threading.Tasks.Task.WhenAll(tasks);
+
+            // All done — update library and show result
+            SaveTrendsLibrary();
+            RefreshTrendsLibraryUI();
+
+            TrendsGenerateAllBtn.IsEnabled = true;
+            TrendsGenerateAllBtn.Content   = "⚡ Generate All";
+            TrendsGenerateAllBtn.Foreground =
+                new SolidColorBrush((Color)ColorConverter.ConvertFromString("#34D399"));
+
+            string summary = succeeded == eligible.Count
+                ? $"All {succeeded} customer(s) generated successfully."
+                : $"{succeeded}/{eligible.Count} succeeded.";
+            if (failedNames.Count > 0)
+                summary += $"\nFailed: {string.Join(", ", failedNames)}";
+
+            TrendsStatusLabel.Text = summary;
+            TrendsStatusLabel.Foreground = new SolidColorBrush(
+                failedNames.Count == 0
+                    ? Color.FromRgb(0x4A, 0xDE, 0x80)
+                    : Color.FromRgb(0xFB, 0xBF, 0x24));
         }
 
         // ── Auto-watch (multi-customer) ───────────────────────────────────────
@@ -2700,7 +2829,10 @@ namespace TestApp
             string name       = customer.Name;
             string reportsFolder = string.IsNullOrEmpty(customer.ReportsFolder)
                 ? runsFolder : customer.ReportsFolder;
-            int fw = _settings.TrendsWatchIntervalSecs > 0 ? 3 : 3; // use saved fail window
+            // Use per-customer FailWindow if set, otherwise fall back to global setting
+            int fw = customer.FailWindow > 0
+                ? customer.FailWindow
+                : (int.TryParse(_settings.TrendsFailWindow, out int gfw) && gfw >= 1 ? gfw : 3);
 
             // Run generation for this customer in background
             System.Threading.Tasks.Task.Run(() =>
@@ -2955,7 +3087,8 @@ namespace TestApp
             var dtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
             {
                 Id = c.Id, Name = c.Name, RunsFolder = c.RunsFolder,
-                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput
+                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput,
+                FailWindow = c.FailWindow,
             }).ToList();
 
             bool ok = AppDataManager.ExportTrendsLibrary(dtos, dlg.FileName);
@@ -2977,7 +3110,8 @@ namespace TestApp
             var existingDtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
             {
                 Id = c.Id, Name = c.Name, RunsFolder = c.RunsFolder,
-                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput
+                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput,
+                FailWindow = c.FailWindow,
             }).ToList();
 
             var (imported, error) = AppDataManager.ImportTrendsLibrary(dlg.FileName, existingDtos);
@@ -3001,7 +3135,8 @@ namespace TestApp
                 _trendsLibrary.Add(new TrendsCustomer
                 {
                     Id = dto.Id, Name = dto.Name, RunsFolder = dto.RunsFolder,
-                    ReportsFolder = dto.ReportsFolder, LastGenerated = dto.LastGenerated, LastOutput = dto.LastOutput
+                    ReportsFolder = dto.ReportsFolder, LastGenerated = dto.LastGenerated,
+                    LastOutput = dto.LastOutput, FailWindow = dto.FailWindow,
                 });
 
             SaveTrendsLibrary();
@@ -3077,7 +3212,8 @@ namespace TestApp
                 {
                     Name          = name,
                     RunsFolder    = folder,
-                    ReportsFolder = reportsFolder
+                    ReportsFolder = reportsFolder,
+                    // Bulk import: no per-customer value yet; defaults to 0 (use global)
                 });
                 added++;
             }
@@ -3109,7 +3245,8 @@ namespace TestApp
             var dtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
             {
                 Id = c.Id, Name = c.Name, RunsFolder = c.RunsFolder,
-                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput
+                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput,
+                FailWindow = c.FailWindow,
             }).ToList();
 
             bool ok = AppDataManager.ExportAll(_library, dtos, _settings, dlg.FileName);
@@ -3134,7 +3271,8 @@ namespace TestApp
             var existingDtos = _trendsLibrary.Select(c => new AppDataManager.TrendsCustomerDto
             {
                 Id = c.Id, Name = c.Name, RunsFolder = c.RunsFolder,
-                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput
+                ReportsFolder = c.ReportsFolder, LastGenerated = c.LastGenerated, LastOutput = c.LastOutput,
+                FailWindow = c.FailWindow,
             }).ToList();
 
             var result = AppDataManager.ImportAll(dlg.FileName, _library, existingDtos);
@@ -3175,7 +3313,8 @@ namespace TestApp
                     _trendsLibrary.Add(new TrendsCustomer
                     {
                         Id = dto.Id, Name = dto.Name, RunsFolder = dto.RunsFolder,
-                        ReportsFolder = dto.ReportsFolder, LastGenerated = dto.LastGenerated, LastOutput = dto.LastOutput
+                        ReportsFolder = dto.ReportsFolder, LastGenerated = dto.LastGenerated,
+                        LastOutput = dto.LastOutput, FailWindow = dto.FailWindow,
                     });
                 SaveTrendsLibrary();
                 RefreshTrendsLibraryUI();
