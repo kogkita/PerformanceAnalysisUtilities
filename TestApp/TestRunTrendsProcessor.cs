@@ -84,10 +84,20 @@ namespace TestApp
                     $"TrendRun_{Guid.NewGuid():N}_{Path.GetFileName(xlsxPath)}");
                 File.Copy(xlsxPath, tempPath, overwrite: false);
 
-                using var pkg = new ExcelPackage(new FileInfo(tempPath));
+                // Wrap in try/finally so the temp file is ALWAYS deleted —
+                // even if EPPlus throws during open or worksheet access.
+                ExcelPackage pkg;
+                try
+                {
+                    pkg = new ExcelPackage(new FileInfo(tempPath));
+                }
+                finally
+                {
+                    try { File.Delete(tempPath); } catch { }
+                }
+                using (pkg)
+                {
                 var ws = pkg.Workbook.Worksheets.FirstOrDefault();
-
-                try { File.Delete(tempPath); } catch { }
 
                 if (ws == null)
                 {
@@ -160,6 +170,7 @@ namespace TestApp
 
                 Write(log, $"  Parsed: {run.Label} — {run.Total} cases, {run.Passed} pass, {run.Failed} fail, date {run.RunDate:dd MMM yyyy}");
                 return run;
+                } // end using pkg
             }
             catch (Exception ex)
             {

@@ -85,7 +85,14 @@ namespace TestApp
         /// run that may have failed before <see cref="InjectPendingCharts"/>
         /// was reached.
         /// </summary>
-        public static void ClearPendingCharts() => _pendingCharts.Clear();
+        /// <summary>
+        /// Clears the chart cache.  Call at the start of each run and in any
+        /// error/cancel path to prevent stale record lists accumulating.
+        /// </summary>
+        public static void ClearPendingCharts()
+        {
+            _pendingCharts.Clear();
+        }
 
         /// <summary>Called by MainWindow after SaveAs in clubbed mode.</summary>
         public static void InjectPendingCharts(string xlsxPath)

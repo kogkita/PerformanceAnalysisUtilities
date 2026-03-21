@@ -33,6 +33,7 @@ namespace TestApp
                 LoadSettings();
                 InitTrayOnLoad();
                 DarkMessageBox.SetOwner(this);
+                Task.Run(CleanOrphanTempFiles); // clean up any leftover temp files from last session
             };
         }
 
@@ -2420,8 +2421,7 @@ namespace TestApp
                 Action<string> log = msg =>
                     Dispatcher.Invoke(() =>
                     {
-                        if (TrendsLog.Text.Length > 0) TrendsLog.Text += "\n";
-                        TrendsLog.Text += $"[{DateTime.Now:HH:mm:ss}]  {msg}";
+                        TrendsAppendLog(msg);
                     });
 
                 var (ok, outputPath, error) =
@@ -2552,7 +2552,16 @@ namespace TestApp
             {
                 Interval = TimeSpan.FromSeconds(intervalSecs)
             };
-            timer.Tick += (_, _) => CustomerWatchTick(customer);
+            // Capture only the Id — not the full customer object — so that if the
+            // customer is removed from the library the next tick resolves null and
+            // stops the timer, releasing the reference cleanly.
+            string capturedId = customer.Id;
+            timer.Tick += (_, _) =>
+            {
+                var c = _trendsLibrary.FirstOrDefault(x => x.Id == capturedId);
+                if (c == null) { StopCustomerWatch(capturedId); return; }
+                CustomerWatchTick(c);
+            };
             timer.Start();
             _watchTimers[customer.Id] = timer;
 
@@ -2570,9 +2579,12 @@ namespace TestApp
             AppDataManager.SaveSettings(_settings);
             _tray?.UpdateTooltip(_watchTimers.Count);
 
-            // Kick off first scan immediately
-            Dispatcher.BeginInvoke(new Action(() => CustomerWatchTick(customer)),
-                System.Windows.Threading.DispatcherPriority.Background);
+            // Kick off first scan immediately (use capturedId for consistency)
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                var c = _trendsLibrary.FirstOrDefault(x => x.Id == capturedId);
+                if (c != null) CustomerWatchTick(c);
+            }), System.Windows.Threading.DispatcherPriority.Background);
         }
 
         private void StopCustomerWatch(string customerId)
@@ -2696,8 +2708,7 @@ namespace TestApp
                 Action<string>? log = isCurrent
                     ? msg => Dispatcher.Invoke(() =>
                     {
-                        if (TrendsLog.Text.Length > 0) TrendsLog.Text += "\n";
-                        TrendsLog.Text += $"[{DateTime.Now:HH:mm:ss}]  {msg}";
+                        TrendsAppendLog(msg);
                     })
                     : null; // background customers: no UI log, no race condition
 
@@ -2843,7 +2854,28 @@ namespace TestApp
             _watchTimers.Clear();
             _tray?.Dispose();
             SaveSettings();
+            AppLogger.Shutdown();     // flush and stop background log writer
+            CleanOrphanTempFiles();   // remove any TrendRun_* leftovers in %TEMP%
             base.OnClosed(e);
+        }
+
+        /// <summary>
+        /// Deletes orphaned TrendRun_* temp files left in %TEMP% by any
+        /// ParseRunFile call that was interrupted before it could delete its copy.
+        /// Safe to call at startup and shutdown — ignores any file that is still
+        /// in use.
+        /// </summary>
+        private static void CleanOrphanTempFiles()
+        {
+            try
+            {
+                string tmp = Path.GetTempPath();
+                foreach (var f in Directory.GetFiles(tmp, "TrendRun_*.xlsx"))
+                {
+                    try { File.Delete(f); } catch { /* in use or locked — skip */ }
+                }
+            }
+            catch { }
         }
 
         // ── Export / Import — Script Library ─────────────────────────────────
@@ -3186,17 +3218,83 @@ namespace TestApp
             progress.Visibility = Visibility.Collapsed;
         }
 
+        private const int LogMaxLines = 500;   // cap per log panel — prevents unbounded string growth
+
         private void LogMsg(TextBlock log, string message, string colorHex = "#8B93A5")
         {
-            string ts = DateTime.Now.ToString("HH:mm:ss");
-            if (log.Text.Length > 0) log.Text += "\n";
-            log.Text += $"[{ts}]  {message}";
+            string ts   = DateTime.Now.ToString("HH:mm:ss");
+            string line = $"[{ts}]  {message}";
+
+            if (log.Text.Length > 0)
+            {
+                // Count existing lines; trim oldest ~10% when we hit the cap
+                string current  = log.Text;
+                int    newlines = 0;
+                for (int i = 0; i < current.Length; i++)
+                    if (current[i] == '\n') newlines++;
+
+                if (newlines >= LogMaxLines)
+                {
+                    int drop  = LogMaxLines / 10;
+                    int start = 0;
+                    for (int i = 0; i < drop && start < current.Length; i++)
+                    {
+                        int nl = current.IndexOf('\n', start);
+                        if (nl < 0) break;
+                        start = nl + 1;
+                    }
+                    current  = "… (older entries trimmed) …\n" + current[start..];
+                    log.Text = current;
+                }
+
+                log.Text += "\n" + line;
+            }
+            else
+            {
+                log.Text = line;
+            }
+
             log.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(colorHex));
         }
 
         private void LogSuccess(TextBlock log, string message) => LogMsg(log, message, "#4ADE80");
         private void LogError(TextBlock log, string message) => LogMsg(log, message, "#F87171");
         private void LogInfo(TextBlock log, string message) => LogMsg(log, message, "#60A5FA");
+        /// <summary>
+        /// Appends a timestamped line to TrendsLog, trimming oldest entries
+        /// when the panel exceeds LogMaxLines to prevent unbounded growth.
+        /// </summary>
+        private void TrendsAppendLog(string msg)
+        {
+            string line = $"[{DateTime.Now:HH:mm:ss}]  {msg}";
+            if (TrendsLog.Text.Length > 0)
+            {
+                string current = TrendsLog.Text;
+                int newlines   = 0;
+                for (int i = 0; i < current.Length; i++)
+                    if (current[i] == '\n') newlines++;
+
+                if (newlines >= LogMaxLines)
+                {
+                    int drop  = LogMaxLines / 10;
+                    int start = 0;
+                    for (int i = 0; i < drop && start < current.Length; i++)
+                    {
+                        int nl = current.IndexOf('\n', start);
+                        if (nl < 0) break;
+                        start = nl + 1;
+                    }
+                    TrendsLog.Text = "… (older entries trimmed) …\n" + current[start..];
+                }
+
+                TrendsLog.Text += "\n" + line;
+            }
+            else
+            {
+                TrendsLog.Text = line;
+            }
+        }
+
 
         private void LogResult(TextBlock log, ProgressBar progress, int succeeded, List<string> errors, string? savedPath = null)
         {
