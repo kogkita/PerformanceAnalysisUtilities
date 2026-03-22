@@ -4,6 +4,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Net.Http;
+using System.Threading;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -35,6 +37,7 @@ namespace TestApp
                 DarkMessageBox.SetOwner(this);
                 Task.Run(CleanOrphanTempFiles); // clean up any leftover temp files from last session
                 InitScriptParamPanel();
+                InitAiChat();
             };
         }
 
@@ -147,6 +150,7 @@ namespace TestApp
             PageScriptRunner.Visibility   = Visibility.Collapsed;
             PageTestRunTrends.Visibility  = Visibility.Collapsed;
             PageSettings.Visibility       = Visibility.Collapsed;
+            PageAiChat.Visibility         = Visibility.Collapsed;
             page.Visibility = Visibility.Visible;
         }
 
@@ -158,6 +162,9 @@ namespace TestApp
 
         private void NavSettings_Click(object sender, RoutedEventArgs e)
             => SetActivePage(NavSettings, PageSettings);
+
+        private void NavAiChat_Click(object sender, RoutedEventArgs e)
+            => SetActivePage(NavAiChat, PageAiChat);
 
         private void NavConvert_Click(object sender, RoutedEventArgs e)
             => SetActivePage(NavConvert, PageConvert);
@@ -1906,6 +1913,11 @@ namespace TestApp
             public int       FailWindow        { get; set; } = 0;
             /// <summary>Per-customer watch interval in seconds. 0 = use the global setting.</summary>
             public int       WatchIntervalSecs { get; set; } = 0;
+            /// <summary>
+            /// Persisted watch state — true if auto-watch was active for this customer
+            /// when the app last saved.  Used to restore watches after restart/reboot.
+            /// </summary>
+            public bool      WatchEnabled      { get; set; } = false;
         }
 
         private List<TrendsCustomer> _trendsLibrary = new();
@@ -1925,6 +1937,7 @@ namespace TestApp
                 LastOutput    = d.LastOutput,
                 FailWindow    = d.FailWindow,
                 WatchIntervalSecs = d.WatchIntervalSecs,
+                WatchEnabled      = d.WatchEnabled,
             }).ToList();
             RefreshTrendsLibraryUI();
         }
@@ -1940,6 +1953,8 @@ namespace TestApp
                 LastGenerated = c.LastGenerated,
                 LastOutput    = c.LastOutput,
                 FailWindow    = c.FailWindow,
+                WatchIntervalSecs = c.WatchIntervalSecs,
+                WatchEnabled      = c.WatchEnabled,
             }).ToList();
             AppDataManager.SaveTrendsLibrary(dtos);
         }
@@ -2467,15 +2482,32 @@ namespace TestApp
         private void InitTrayOnLoad()
         {
             InitTray();
-            // Restore per-customer watches from settings
+            // Restore per-customer watches from persisted WatchEnabled state.
+            // Only customers that were actually being watched before the last
+            // shutdown/crash are restarted — not all customers with a valid folder.
             if (_settings.TrendsAutoWatch)
                 Dispatcher.BeginInvoke(new Action(() =>
                 {
                     foreach (var c in _trendsLibrary)
                     {
-                        if (!string.IsNullOrEmpty(c.RunsFolder) && Directory.Exists(c.RunsFolder))
+                        if (c.WatchEnabled &&
+                            !string.IsNullOrEmpty(c.RunsFolder) &&
+                            Directory.Exists(c.RunsFolder))
                             StartCustomerWatch(c, silent: true);
                     }
+
+                    // If launched with --minimized (e.g. after server reboot via
+                    // Task Scheduler), go straight to the system tray.
+                    if (App.StartMinimized && _watchTimers.Count > 0)
+                        _tray?.MinimizeToTray();
+                }), System.Windows.Threading.DispatcherPriority.Loaded);
+
+            // Even without active watches, honour --minimized so the app
+            // doesn't pop up a window on a headless server after reboot.
+            if (App.StartMinimized && !_settings.TrendsAutoWatch)
+                Dispatcher.BeginInvoke(new Action(() =>
+                {
+                    _tray?.MinimizeToTray();
                 }), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
@@ -2553,6 +2585,15 @@ namespace TestApp
 
             _settings.TrendsAutoWatch = true;
             AppDataManager.SaveSettings(_settings);
+
+            // Persist per-customer watch state so it survives app/server restarts
+            customer.WatchEnabled = true;
+            SaveTrendsLibrary();
+
+            // Auto-register Windows logon startup so the app restarts after a
+            // server reboot — only registers once (idempotent).
+            EnsureAutoStartRegistered();
+
             _tray?.UpdateTooltip(_watchTimers.Count);
 
             // Kick off first scan immediately (use capturedId for consistency)
@@ -2572,19 +2613,30 @@ namespace TestApp
             }
 
             var customer = _trendsLibrary.FirstOrDefault(c => c.Id == customerId);
-            if (customer != null && IsCurrentCustomer(customer))
+            if (customer != null)
             {
-                TrendsWatchToggleBtn.Content    = "👁 Auto-Watch";
-                TrendsWatchToggleBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E2640"));
-                TrendsWatchToggleBtn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#60A5FA"));
-                TrendsWatchStatusLabel.Text     = "";
-                TrendsWatchStatusLabel.Visibility = Visibility.Collapsed;
+                // Persist per-customer watch state
+                customer.WatchEnabled = false;
+                SaveTrendsLibrary();
+
+                if (IsCurrentCustomer(customer))
+                {
+                    TrendsWatchToggleBtn.Content    = "👁 Auto-Watch";
+                    TrendsWatchToggleBtn.Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E2640"));
+                    TrendsWatchToggleBtn.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#60A5FA"));
+                    TrendsWatchStatusLabel.Text     = "";
+                    TrendsWatchStatusLabel.Visibility = Visibility.Collapsed;
+                }
             }
 
             if (_watchTimers.Count == 0)
             {
                 _settings.TrendsAutoWatch = false;
                 AppDataManager.SaveSettings(_settings);
+
+                // No active watchers — remove the Windows logon auto-start entry
+                // so the app doesn't launch on reboot when nothing needs watching.
+                EnsureAutoStartUnregistered();
             }
             _tray?.UpdateTooltip(_watchTimers.Count);
         }
@@ -2798,6 +2850,13 @@ namespace TestApp
             if (AppLogFolderBox   != null) AppLogFolderBox.Text          = _settings.AppLogFolder;
             AppLogger.Configure(_settings.AppLogEnabled, _settings.AppLogFolder);
 
+            // Restore auto-start checkbox; also sync with Task Scheduler reality
+            // in case the task was manually deleted outside the app.
+            if (_settings.AutoStartOnLogon && !WindowsTaskScheduler.IsAppAutoStartRegistered())
+                _settings.AutoStartOnLogon = false;  // task was removed externally
+            if (AutoStartOnLogonCheck != null)
+                AutoStartOnLogonCheck.IsChecked = _settings.AutoStartOnLogon;
+
             // Auto-watch restore is handled by InitTrayOnLoad() after library is loaded
         }
 
@@ -2815,6 +2874,8 @@ namespace TestApp
             _settings.LastNmonOutputDir    = NmonOutDirBox?.Text?.Trim() ?? "";
             _settings.AppLogEnabled        = AppLogEnabledCheck?.IsChecked == true;
             _settings.AppLogFolder         = AppLogFolderBox?.Text?.Trim() ?? "";
+            // Note: AutoStartOnLogon is managed by EnsureAutoStartRegistered/Unregistered,
+            // not saved here — it changes only when watchers start or stop.
             AppDataManager.SaveSettings(_settings);
             AppLogger.Configure(_settings.AppLogEnabled, _settings.AppLogFolder);
         }
@@ -2859,6 +2920,72 @@ namespace TestApp
                 }
             }
             catch { }
+        }
+
+        // ── Auto-start on Windows logon (server resilience) ─────────────────
+        //
+        // Auto-start is managed automatically by the watcher lifecycle:
+        //   • First watcher starts  → register Task Scheduler ONLOGON entry
+        //   • All watchers stop     → unregister the entry
+        // The Settings checkbox is read-only — it reflects the current state.
+
+        /// <summary>
+        /// Registers the Task Scheduler auto-start entry if not already present.
+        /// Called when the first watcher starts.
+        /// </summary>
+        private void EnsureAutoStartRegistered()
+        {
+            if (WindowsTaskScheduler.IsAppAutoStartRegistered()) 
+            {
+                SyncAutoStartCheckbox(true);
+                return;
+            }
+
+            var (ok, err) = WindowsTaskScheduler.RegisterAppAutoStart();
+            if (ok)
+            {
+                _settings.AutoStartOnLogon = true;
+                AppDataManager.SaveSettings(_settings);
+                SyncAutoStartCheckbox(true);
+                AppLogger.Write("AutoStart", "Registered auto-start on Windows logon.");
+            }
+            else
+            {
+                AppLogger.Write("AutoStart", $"Could not register auto-start: {err}");
+                SyncAutoStartCheckbox(false);
+            }
+        }
+
+        /// <summary>
+        /// Removes the Task Scheduler auto-start entry if present.
+        /// Called when the last watcher stops.
+        /// </summary>
+        private void EnsureAutoStartUnregistered()
+        {
+            if (!WindowsTaskScheduler.IsAppAutoStartRegistered())
+            {
+                SyncAutoStartCheckbox(false);
+                return;
+            }
+
+            var (ok, err) = WindowsTaskScheduler.UnregisterAppAutoStart();
+            if (ok)
+            {
+                _settings.AutoStartOnLogon = false;
+                AppDataManager.SaveSettings(_settings);
+                SyncAutoStartCheckbox(false);
+            }
+            else
+            {
+                AppLogger.Write("AutoStart", $"Could not unregister auto-start: {err}");
+            }
+        }
+
+        /// <summary>Updates the read-only Settings checkbox to reflect the current state.</summary>
+        private void SyncAutoStartCheckbox(bool registered)
+        {
+            if (AutoStartOnLogonCheck != null)
+                AutoStartOnLogonCheck.IsChecked = registered;
         }
 
         // ── Export / Import — Script Library ─────────────────────────────────
@@ -3337,6 +3464,319 @@ namespace TestApp
                     LogError(log, $"All processing failed:");
                 foreach (var err in errors)
                     LogError(log, $"  • {err}");
+            }
+        }
+
+        // ── AI File Chat page ─────────────────────────────────────────────────
+
+        private readonly AiChatEngine _aiEngine = new();
+        private CancellationTokenSource? _aiCts;
+        private bool _aiStreaming = false;
+
+        // ── Provider / API key management ─────────────────────────────────────
+
+        private AiProviderType GetSelectedProvider()
+        {
+            var item = AiProviderCombo?.SelectedItem as ComboBoxItem;
+            string tag = item?.Tag?.ToString() ?? "Claude";
+            return tag switch
+            {
+                "ChatGPT" => AiProviderType.ChatGPT,
+                "Gemini"  => AiProviderType.Gemini,
+                _         => AiProviderType.Claude
+            };
+        }
+
+        private string GetApiKeyForProvider(AiProviderType type) => type switch
+        {
+            AiProviderType.Claude  => _settings.AiClaudeApiKey,
+            AiProviderType.ChatGPT => _settings.AiChatGptApiKey,
+            AiProviderType.Gemini  => _settings.AiGeminiApiKey,
+            _ => ""
+        };
+
+        private void SetApiKeyForProvider(AiProviderType type, string key)
+        {
+            switch (type)
+            {
+                case AiProviderType.Claude:  _settings.AiClaudeApiKey  = key; break;
+                case AiProviderType.ChatGPT: _settings.AiChatGptApiKey = key; break;
+                case AiProviderType.Gemini:  _settings.AiGeminiApiKey  = key; break;
+            }
+            AppDataManager.SaveSettings(_settings);
+        }
+
+        private void AiProvider_Changed(object sender, SelectionChangedEventArgs e)
+        {
+            if (AiApiKeyBox == null) return;
+            var type = GetSelectedProvider();
+            string key = GetApiKeyForProvider(type);
+            AiApiKeyBox.Text = string.IsNullOrEmpty(key) ? "" : MaskKey(key);
+            AiApiKeyBox.Tag = key;  // store real key in Tag
+            _settings.AiProvider = type.ToString();
+            AppDataManager.SaveSettings(_settings);
+        }
+
+        private void AiApiKey_LostFocus(object sender, RoutedEventArgs e)
+        {
+            string text = AiApiKeyBox.Text.Trim();
+            // If the user typed a new key (not the masked version), save it
+            if (!string.IsNullOrEmpty(text) && !text.Contains("••••"))
+            {
+                var type = GetSelectedProvider();
+                SetApiKeyForProvider(type, text);
+                AiApiKeyBox.Tag = text;
+                AiApiKeyBox.Text = MaskKey(text);
+            }
+        }
+
+        private static string MaskKey(string key)
+        {
+            if (string.IsNullOrEmpty(key)) return "";
+            if (key.Length <= 8) return "••••••••";
+            return key[..4] + "••••••••" + key[^4..];
+        }
+
+        private void InitAiChat()
+        {
+            // Restore provider selection
+            if (AiProviderCombo != null)
+            {
+                string saved = _settings.AiProvider ?? "Claude";
+                foreach (ComboBoxItem item in AiProviderCombo.Items)
+                {
+                    if (item.Tag?.ToString() == saved)
+                    { item.IsSelected = true; break; }
+                }
+            }
+
+            // Restore API key display
+            var provType = GetSelectedProvider();
+            string apiKey = GetApiKeyForProvider(provType);
+            if (AiApiKeyBox != null)
+            {
+                AiApiKeyBox.Text = string.IsNullOrEmpty(apiKey) ? "" : MaskKey(apiKey);
+                AiApiKeyBox.Tag  = apiKey;
+            }
+        }
+
+        // ── File management ───────────────────────────────────────────────────
+
+        private void AiAddFiles_Click(object sender, RoutedEventArgs e)
+        {
+            var dlg = new Microsoft.Win32.OpenFileDialog
+            {
+                Title       = "Select files for AI analysis",
+                Multiselect = true,
+                Filter      = "All Supported|*.xlsx;*.xls;*.csv;*.tsv;*.jtl;*.txt;*.log;*.json;*.xml;*.md;*.yaml;*.yml;*.pdf;*.docx|All Files|*.*"
+            };
+            if (dlg.ShowDialog() != true) return;
+
+            foreach (string path in dlg.FileNames)
+            {
+                try
+                {
+                    var loaded = _aiEngine.AddFile(path);
+                    AddAiSystemMessage($"Loaded: {loaded.Summary}");
+                }
+                catch (Exception ex)
+                {
+                    AddAiSystemMessage($"Failed to load {Path.GetFileName(path)}: {ex.Message}");
+                }
+            }
+            RefreshAiFileStatus();
+        }
+
+        private void AiClear_Click(object sender, RoutedEventArgs e)
+        {
+            _aiCts?.Cancel();
+            _aiEngine.Reset();
+            AiChatMessagesPanel.Children.Clear();
+            RefreshAiFileStatus();
+        }
+
+        private void RefreshAiFileStatus()
+        {
+            if (AiFileStatusLabel == null) return;
+            int count = _aiEngine.Files.Count;
+            int chars  = _aiEngine.TotalFileChars;
+            AiFileStatusLabel.Text = count == 0
+                ? "No files loaded"
+                : $"{count} file(s) loaded · {chars:N0} chars · {_aiEngine.TotalChunks} chunk(s)";
+            AiFileStatusLabel.Foreground = new SolidColorBrush(
+                count > 0 ? Color.FromRgb(0x4A, 0xDE, 0x80) : Color.FromRgb(0x4A, 0x5F, 0x88));
+        }
+
+        // ── Send message ──────────────────────────────────────────────────────
+
+        private void AiInput_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+        {
+            if (e.Key == System.Windows.Input.Key.Enter && !_aiStreaming)
+            {
+                e.Handled = true;
+                AiSend_Click(sender, e);
+            }
+        }
+
+        private async void AiSend_Click(object sender, RoutedEventArgs e)
+        {
+            string message = AiInputBox.Text.Trim();
+            if (string.IsNullOrEmpty(message)) return;
+            if (_aiStreaming) return;
+
+            var providerType = GetSelectedProvider();
+            string apiKey = AiApiKeyBox.Tag as string ?? GetApiKeyForProvider(providerType);
+
+            if (string.IsNullOrEmpty(apiKey))
+            {
+                AddAiSystemMessage("Please enter your API key first.");
+                return;
+            }
+
+            // Add user bubble
+            AddAiUserMessage(message);
+            AiInputBox.Text = "";
+
+            // Create assistant bubble (will be streamed into)
+            var assistantBubble = AddAiAssistantMessage("");
+
+            _aiStreaming = true;
+            AiSendBtn.Content = "Stop";
+            AiSendBtn.Background = new SolidColorBrush(Color.FromRgb(0xDC, 0x26, 0x26));
+            AiInputBox.IsEnabled = false;
+            _aiCts = new CancellationTokenSource();
+
+            try
+            {
+                var provider = AiProviderFactory.Create(providerType, apiKey);
+
+                await _aiEngine.SendAsync(
+                    provider,
+                    message,
+                    token => Dispatcher.Invoke(() =>
+                    {
+                        AppendToAssistantBubble(assistantBubble, token);
+                    }),
+                    _aiCts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                AppendToAssistantBubble(assistantBubble, "\n\n[Stopped]");
+            }
+            catch (HttpRequestException ex)
+            {
+                string errMsg = ex.Message;
+                // Try to extract a readable error from the API response
+                if (errMsg.Contains("401") || errMsg.Contains("403"))
+                    errMsg = "Invalid API key. Please check your key and try again.";
+                else if (errMsg.Contains("429"))
+                    errMsg = "Rate limited. Please wait a moment and try again.";
+                else if (errMsg.Contains("500") || errMsg.Contains("502") || errMsg.Contains("503"))
+                    errMsg = "The AI service is temporarily unavailable. Try again shortly.";
+
+                AppendToAssistantBubble(assistantBubble, $"\n\n[Error: {errMsg}]");
+            }
+            catch (Exception ex)
+            {
+                AppendToAssistantBubble(assistantBubble, $"\n\n[Error: {ex.Message}]");
+            }
+            finally
+            {
+                _aiStreaming = false;
+                AiSendBtn.Content = "Send";
+                AiSendBtn.Background = new SolidColorBrush(Color.FromRgb(0x37, 0x63, 0xFF));
+                AiInputBox.IsEnabled = true;
+                AiInputBox.Focus();
+            }
+        }
+
+        // ── Chat bubble builders ──────────────────────────────────────────────
+
+        private static readonly SolidColorBrush UserBubbleBg   = new(Color.FromRgb(0x1E, 0x3A, 0x8A));
+        private static readonly SolidColorBrush AssistBubbleBg = new(Color.FromRgb(0x14, 0x18, 0x2B));
+        private static readonly SolidColorBrush SystemBubbleBg = new(Color.FromRgb(0x1A, 0x1A, 0x2E));
+        private static readonly SolidColorBrush UserFg         = new(Color.FromRgb(0xBF, 0xDB, 0xFE));
+        private static readonly SolidColorBrush AssistFg       = new(Color.FromRgb(0xCB, 0xD5, 0xE1));
+        private static readonly SolidColorBrush SystemFg       = new(Color.FromRgb(0x6B, 0x7A, 0x99));
+
+        private void AddAiUserMessage(string text)
+        {
+            var border = new Border
+            {
+                Background    = UserBubbleBg,
+                CornerRadius  = new CornerRadius(12, 12, 2, 12),
+                Padding       = new Thickness(14, 10, 14, 10),
+                Margin        = new Thickness(80, 4, 0, 4),
+                HorizontalAlignment = HorizontalAlignment.Right,
+                MaxWidth      = 600,
+            };
+            border.Child = new TextBlock
+            {
+                Text         = text,
+                Foreground   = UserFg,
+                FontSize     = 13,
+                FontFamily   = new FontFamily("Segoe UI Variable, Segoe UI"),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            AiChatMessagesPanel.Children.Add(border);
+            AiChatScroll.ScrollToEnd();
+        }
+
+        private Border AddAiAssistantMessage(string text)
+        {
+            var border = new Border
+            {
+                Background    = AssistBubbleBg,
+                CornerRadius  = new CornerRadius(12, 12, 12, 2),
+                Padding       = new Thickness(14, 10, 14, 10),
+                Margin        = new Thickness(0, 4, 80, 4),
+                HorizontalAlignment = HorizontalAlignment.Left,
+                MaxWidth      = 700,
+                BorderBrush   = new SolidColorBrush(Color.FromRgb(0x1E, 0x25, 0x40)),
+                BorderThickness = new Thickness(1),
+            };
+            border.Child = new TextBlock
+            {
+                Text         = text,
+                Foreground   = AssistFg,
+                FontSize     = 13,
+                FontFamily   = new FontFamily("Segoe UI Variable, Segoe UI"),
+                TextWrapping = TextWrapping.Wrap,
+            };
+            AiChatMessagesPanel.Children.Add(border);
+            AiChatScroll.ScrollToEnd();
+            return border;
+        }
+
+        private void AddAiSystemMessage(string text)
+        {
+            var border = new Border
+            {
+                Background    = SystemBubbleBg,
+                CornerRadius  = new CornerRadius(8),
+                Padding       = new Thickness(12, 6, 12, 6),
+                Margin        = new Thickness(40, 2, 40, 2),
+                HorizontalAlignment = HorizontalAlignment.Center,
+            };
+            border.Child = new TextBlock
+            {
+                Text         = text,
+                Foreground   = SystemFg,
+                FontSize     = 11,
+                FontFamily   = new FontFamily("Segoe UI Variable, Segoe UI"),
+                TextWrapping = TextWrapping.Wrap,
+                TextAlignment = TextAlignment.Center,
+            };
+            AiChatMessagesPanel.Children.Add(border);
+            AiChatScroll.ScrollToEnd();
+        }
+
+        private void AppendToAssistantBubble(Border bubble, string token)
+        {
+            if (bubble.Child is TextBlock tb)
+            {
+                tb.Text += token;
+                AiChatScroll.ScrollToEnd();
             }
         }
 

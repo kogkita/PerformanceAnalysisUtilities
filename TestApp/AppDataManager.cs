@@ -13,7 +13,7 @@ namespace TestApp
     public static class AppDataManager
     {
         public const int CurrentScriptLibraryVersion  = 1;
-        public const int CurrentTrendsLibraryVersion  = 2;
+        public const int CurrentTrendsLibraryVersion  = 3;
         public const int CurrentSettingsVersion       = 2;
 
         private static readonly string AppDataDir = Path.Combine(
@@ -163,6 +163,11 @@ namespace TestApp
             /// Per-customer watch interval override in seconds. 0 = use global setting.
             /// </summary>
             public int       WatchIntervalSecs  { get; set; } = 0;
+            /// <summary>
+            /// Whether auto-watch was active for this customer when the app last saved state.
+            /// Used to restore watches automatically after an app or server restart.
+            /// </summary>
+            public bool      WatchEnabled        { get; set; } = false;
         }
 
         public static List<TrendsCustomerDto> LoadTrendsLibrary()
@@ -246,6 +251,12 @@ namespace TestApp
             if (fromVersion < 2)
                 foreach (var e in entries)
                     if (e.FailWindow == 0) { /* already the correct default — no action */ }
+
+            // v2 → v3: WatchEnabled field added.
+            // Default of false is correct — watches should not auto-start for
+            // upgraded customers unless the user explicitly enables them.
+            // No action needed; the default value handles it.
+
             return entries;
         }
 
@@ -284,6 +295,24 @@ namespace TestApp
             // ── App-level logging ─────────────────────────────────────────
             public bool   AppLogEnabled      { get; set; } = false;
             public string AppLogFolder       { get; set; } = "";
+
+            // ── Server resilience ─────────────────────────────────────────
+            /// <summary>
+            /// When true, the app registers a Task Scheduler entry to auto-start
+            /// with --minimized on Windows logon, ensuring watches resume after
+            /// a server reboot.
+            /// </summary>
+            public bool   AutoStartOnLogon   { get; set; } = false;
+
+            // ── AI Chat ───────────────────────────────────────────────────
+            /// <summary>Selected AI provider: "Claude", "ChatGPT", or "Gemini".</summary>
+            public string AiProvider          { get; set; } = "Claude";
+            /// <summary>Anthropic API key for Claude.</summary>
+            public string AiClaudeApiKey      { get; set; } = "";
+            /// <summary>OpenAI API key for ChatGPT.</summary>
+            public string AiChatGptApiKey     { get; set; } = "";
+            /// <summary>Google API key for Gemini.</summary>
+            public string AiGeminiApiKey      { get; set; } = "";
         }
 
         public static AppSettings LoadSettings()

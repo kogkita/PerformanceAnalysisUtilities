@@ -232,5 +232,89 @@ namespace TestApp
             proc.WaitForExit();
             return (proc.ExitCode, output, error);
         }
+
+        // ── App auto-start on Windows logon ──────────────────────────────────
+        //
+        // Uses the HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Run registry
+        // key so the app restarts after a server reboot (or user logon) without
+        // requiring admin rights.  The entry launches the app with --minimized
+        // so it goes straight to the system tray and resumes watches silently.
+
+        private const string AutoStartRegistryKey  = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+        private const string AutoStartRegistryName = "PerformanceTestUtilities";
+
+        /// <summary>
+        /// Registers the app to auto-start on Windows logon via the
+        /// HKCU Run registry key.  Returns (ok, error).
+        /// </summary>
+        public static (bool Ok, string Error) RegisterAppAutoStart()
+        {
+            try
+            {
+                string exePath = GetAppExePath();
+                if (string.IsNullOrEmpty(exePath))
+                    return (false, "Could not determine the application executable path.");
+
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AutoStartRegistryKey, writable: true);
+                if (key == null)
+                    return (false, "Could not open HKCU Run registry key.");
+
+                key.SetValue(AutoStartRegistryName, $"\"{exePath}\" --minimized");
+                return (true, "");
+            }
+            catch (Exception ex) { return (false, ex.Message); }
+        }
+
+        /// <summary>Removes the app auto-start registry entry if it exists.</summary>
+        public static (bool Ok, string Error) UnregisterAppAutoStart()
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AutoStartRegistryKey, writable: true);
+                if (key == null) return (true, "");
+
+                if (key.GetValue(AutoStartRegistryName) != null)
+                    key.DeleteValue(AutoStartRegistryName, throwOnMissingValue: false);
+
+                return (true, "");
+            }
+            catch (Exception ex) { return (false, ex.Message); }
+        }
+
+        /// <summary>Returns true if the app auto-start registry entry is present.</summary>
+        public static bool IsAppAutoStartRegistered()
+        {
+            try
+            {
+                using var key = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(AutoStartRegistryKey);
+                return key?.GetValue(AutoStartRegistryName) != null;
+            }
+            catch { return false; }
+        }
+
+        /// <summary>
+        /// Resolves the path to the running executable.  Works for both
+        /// framework-dependent (.dll + dotnet host) and self-contained (.exe)
+        /// deployments.
+        /// </summary>
+        private static string GetAppExePath()
+        {
+            // For single-file / self-contained: Environment.ProcessPath is the .exe
+            string? processPath = Environment.ProcessPath;
+            if (!string.IsNullOrEmpty(processPath) &&
+                processPath.EndsWith(".exe", StringComparison.OrdinalIgnoreCase))
+                return processPath;
+
+            // Fallback: look for TestApp.exe next to the entry assembly
+            string? asmLocation = System.Reflection.Assembly.GetEntryAssembly()?.Location;
+            if (!string.IsNullOrEmpty(asmLocation))
+            {
+                string dir = Path.GetDirectoryName(asmLocation) ?? "";
+                string candidate = Path.Combine(dir, "TestApp.exe");
+                if (File.Exists(candidate)) return candidate;
+            }
+
+            return processPath ?? "";
+        }
     }
 }
