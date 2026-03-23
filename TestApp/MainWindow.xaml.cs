@@ -1952,6 +1952,20 @@ namespace TestApp
         private List<string>            _dbFetchedRunNumbers    = new();
         private List<string>            _dbApiHosts             = new();
         private readonly Dictionary<string, System.Windows.Threading.DispatcherTimer> _dbWatchTimers = new();
+        private bool                    _dbTrendsCustomerDirty  = false;
+        private bool                    _suppressDbDirtyTracking = false;
+
+        private void MarkDbTrendsCustomerDirty()
+        {
+            if (_suppressDbDirtyTracking) return;
+            if (_activeDbTrendsCustomer == null) return;
+            if (_dbTrendsCustomerDirty) return;
+            _dbTrendsCustomerDirty = true;
+            DbTrendsUpdateLibraryBtn.Visibility = Visibility.Visible;
+            DbTrendsStatusLabel.Text = $"Unsaved changes — {_activeDbTrendsCustomer.Name}";
+            DbTrendsStatusLabel.Foreground = new SolidColorBrush(
+                (Color)ColorConverter.ConvertFromString("#FBBF24"));
+        }
 
         private void LoadDbApiHostsToComboBox()
         {
@@ -2042,9 +2056,12 @@ namespace TestApp
 
         private void LoadDbTrendsCustomer(DbTrendsCustomer c)
         {
+            _suppressDbDirtyTracking = true;
             _activeDbTrendsCustomer = c;
+            _dbTrendsCustomerDirty  = false;
             DbTrendsCustomerNameBox.Text = c.Name;
             DbTrendsFailWindowBox.Text   = c.FailWindow > 0 ? c.FailWindow.ToString() : "3";
+            DbTrendsWatchIntervalBox.Text = c.WatchIntervalSecs > 0 ? c.WatchIntervalSecs.ToString() : "300";
             DbTrendsApiHostBox.Text         = string.IsNullOrEmpty(c.ApiHost) ? "http://apso1wats4:8080" : c.ApiHost;
             DbTrendsMaxMonthsBox.Text       = c.MaxMonths > 0 ? c.MaxMonths.ToString() : "0";
             DbTrendsIncludeOldRunsCheck.IsChecked = c.IncludeOldRuns;
@@ -2054,21 +2071,24 @@ namespace TestApp
             DbTrendsDownloadFolderLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
                 string.IsNullOrEmpty(c.DownloadFolder) ? "#4A5F88" : "#CBD5E1"));
             DbTrendsReportsFolderLabel.Text = string.IsNullOrEmpty(c.ReportsFolder) ? "Same as Download folder" : c.ReportsFolder;
-            DbTrendsUpdateLibraryBtn.Visibility = Visibility.Visible;
+            DbTrendsUpdateLibraryBtn.Visibility = Visibility.Collapsed;
+            DbTrendsStatusLabel.Text = "";
             DbTrendsDownloadBtn.IsEnabled  = false;
             DbTrendsRunBtn.IsEnabled       = false;
             _dbFetchedRunNumbers.Clear();
-            DbTrendsStatusLabel.Text = "";
+            _suppressDbDirtyTracking = false;
         }
 
         private void DbTrendsField_Changed(object sender, System.Windows.Controls.TextChangedEventArgs e)
         {
             UpdateDbTrendsFetchUrlPreview();
+            MarkDbTrendsCustomerDirty();
         }
 
         private void DbTrendsApiHost_SelectionChanged(object sender, System.Windows.Controls.SelectionChangedEventArgs e)
         {
             UpdateDbTrendsFetchUrlPreview();
+            MarkDbTrendsCustomerDirty();
         }
 
         private void DbTrendsApiHostSave_Click(object sender, RoutedEventArgs e)
@@ -2094,7 +2114,9 @@ namespace TestApp
             }
         }
 
-        private void DbTrendsApiKey_Changed(object sender, RoutedEventArgs e) { }
+        private void DbTrendsApiKey_Changed(object sender, RoutedEventArgs e) { MarkDbTrendsCustomerDirty(); }
+
+        private void DbTrendsIncludeOldRuns_Changed(object sender, RoutedEventArgs e) { MarkDbTrendsCustomerDirty(); }
 
         private void UpdateDbTrendsFetchUrlPreview()
         {
@@ -2153,12 +2175,11 @@ namespace TestApp
                 return;
             }
 
-            // Load each customer in turn and run generation
+            // Run each customer's generation directly from its saved data — do NOT call
+            // LoadDbTrendsCustomer() here, which would reset UI state and race with the
+            // background tasks that read from those same UI fields.
             foreach (var c in eligible)
-            {
-                LoadDbTrendsCustomer(c);
-                RunDbTrendsGeneration();
-            }
+                RunDbTrendsGenerationForCustomer(c);
         }
 
         private void DbTrendsUpdateLibrary_Click(object sender, RoutedEventArgs e)
@@ -2172,8 +2193,12 @@ namespace TestApp
             if (int.TryParse(DbTrendsFailWindowBox.Text, out int fw)) _activeDbTrendsCustomer.FailWindow = fw;
             _activeDbTrendsCustomer.MaxMonths      = int.TryParse(DbTrendsMaxMonthsBox.Text.Trim(), out int dmm) && dmm > 0 ? dmm : 0;
             _activeDbTrendsCustomer.IncludeOldRuns = DbTrendsIncludeOldRunsCheck.IsChecked == true;
+            _activeDbTrendsCustomer.WatchIntervalSecs = int.TryParse(DbTrendsWatchIntervalBox.Text.Trim(), out int dwi) && dwi > 0 ? dwi : 300;
             RefreshDbTrendsLibraryUI();
+            _dbTrendsCustomerDirty = false;
+            DbTrendsUpdateLibraryBtn.Visibility = Visibility.Collapsed;
             DbTrendsStatusLabel.Text = $"\u2714 '{_activeDbTrendsCustomer.Name}' saved to library.";
+            DbTrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
         }
 
         private void DbTrendsDownloadFolderBrowse_Click(object sender, RoutedEventArgs e)
@@ -2182,6 +2207,7 @@ namespace TestApp
             if (string.IsNullOrEmpty(f)) return;
             DbTrendsDownloadFolderLabel.Text       = f;
             DbTrendsDownloadFolderLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#CBD5E1"));
+            MarkDbTrendsCustomerDirty();
         }
 
         private void DbTrendsReportsFolderBrowse_Click(object sender, RoutedEventArgs e)
@@ -2189,6 +2215,7 @@ namespace TestApp
             string f = BrowseFolder("Select Reports folder (where Trends.xlsx will be saved)");
             if (string.IsNullOrEmpty(f)) return;
             DbTrendsReportsFolderLabel.Text = f;
+            MarkDbTrendsCustomerDirty();
         }
 
         private async void DbTrendsFetchRuns_Click(object sender, RoutedEventArgs e)
@@ -2272,7 +2299,34 @@ namespace TestApp
             DbTrendsDownloadBtn.IsEnabled = false;
             DbTrendsLogPanel.Visibility   = Visibility.Visible;
             DbTrendsProgress.Visibility   = Visibility.Visible;
-            DbTrendsLog.Text              = $"Downloading {_dbFetchedRunNumbers.Count} files to {downloadFolder}...\n";
+
+            // Determine which runs are missing from disk before downloading
+            var customerNameForDl = DbTrendsCustomerNameBox.Text.Trim();
+            var dlPrefix = customerNameForDl + "_";
+            var onDisk = System.IO.Directory.Exists(downloadFolder)
+                ? System.IO.Directory.GetFiles(downloadFolder, "*.xlsx")
+                    .Select(f => System.IO.Path.GetFileNameWithoutExtension(f))
+                    .Where(n => n.StartsWith(dlPrefix, StringComparison.OrdinalIgnoreCase))
+                    .Select(n => n[dlPrefix.Length..])
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase)
+                : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            var runsToDownload = _dbFetchedRunNumbers.Where(r => !onDisk.Contains(r)).ToList();
+            var skippedCount   = _dbFetchedRunNumbers.Count - runsToDownload.Count;
+
+            DbTrendsLog.Text = skippedCount > 0
+                ? $"Downloading {runsToDownload.Count} new file(s) to {downloadFolder}... ({skippedCount} already on disk, skipping)\n"
+                : $"Downloading {runsToDownload.Count} file(s) to {downloadFolder}...\n";
+
+            if (runsToDownload.Count == 0)
+            {
+                DbTrendsLog.Text        += $"\u2714 All {skippedCount} file(s) already present — nothing to download.\n";
+                DbTrendsRunBtn.IsEnabled     = true;
+                DbTrendsDownloadBtn.IsEnabled = true;
+                DbTrendsProgress.Visibility  = Visibility.Collapsed;
+                DbTrendsStatusLabel.Text = $"\u2714 All files already on disk. Click Generate Trends to produce the report.";
+                return;
+            }
 
             int success = 0, failed = 0;
             try
@@ -2282,12 +2336,11 @@ namespace TestApp
                     http.DefaultRequestHeaders.Add("Authorization", $"Bearer {apiKey}");
                 http.Timeout = TimeSpan.FromMinutes(5);
 
-                foreach (var run in _dbFetchedRunNumbers)
+                foreach (var run in runsToDownload)
                 {
-                    var dlUrl  = BuildDownloadUrl(run);
-                    var customer = DbTrendsCustomerNameBox.Text.Trim();
-                    var fileName = $"{customer}_{run}.xlsx";
-                    var target = System.IO.Path.Combine(downloadFolder, fileName);
+                    var dlUrl    = BuildDownloadUrl(run);
+                    var fileName = $"{customerNameForDl}_{run}.xlsx";
+                    var target   = System.IO.Path.Combine(downloadFolder, fileName);
                     try
                     {
                         var bytes = await http.GetByteArrayAsync(dlUrl);
@@ -2345,10 +2398,10 @@ namespace TestApp
                 !System.IO.Directory.Exists(downloadFolder))
             { DarkMessageBox.Show("Select a valid Download folder.", "Required"); return; }
 
-            if (!int.TryParse(DbTrendsFailWindowBox.Text.Trim(), out int failWindow) || failWindow < 1)
-                failWindow = 3;
-            if (_activeDbTrendsCustomer?.FailWindow > 0)
-                failWindow = _activeDbTrendsCustomer.FailWindow;
+            // Use saved customer value when available; fall back to the text box
+            int failWindow = (_activeDbTrendsCustomer?.FailWindow > 0)
+                ? _activeDbTrendsCustomer.FailWindow
+                : (int.TryParse(DbTrendsFailWindowBox.Text.Trim(), out int fwBox) && fwBox > 0 ? fwBox : 3);
 
             DbTrendsLogPanel.Visibility = Visibility.Visible;
             DbTrendsProgress.Visibility = Visibility.Visible;
@@ -2404,6 +2457,53 @@ namespace TestApp
                     {
                         DbTrendsStatusLabel.Text = $"\u2716 Failed: {error}";
                         DbTrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+                    }
+                });
+            });
+        }
+
+        // Runs generation for an arbitrary customer object without touching any UI fields.
+        // Used by GenerateAll so multiple background tasks never race on the same controls.
+        private void RunDbTrendsGenerationForCustomer(DbTrendsCustomer c)
+        {
+            if (string.IsNullOrEmpty(c.DownloadFolder) || !System.IO.Directory.Exists(c.DownloadFolder))
+                return;
+
+            var runsFolder  = c.DownloadFolder;
+            var rptFolder   = string.IsNullOrEmpty(c.ReportsFolder) ? runsFolder : c.ReportsFolder;
+            var fw          = c.FailWindow > 0 ? c.FailWindow : 3;
+            var maxMonths   = c.MaxMonths;
+            var inclOld     = c.IncludeOldRuns;
+            var custName    = c.Name;
+            var custId      = c.Id;
+
+            System.Threading.Tasks.Task.Run(() =>
+            {
+                var (ok, outputPath, error) =
+                    TestRunTrendsProcessor.Generate(null, runsFolder, custName, rptFolder, fw, maxMonths, inclOld);
+
+                Dispatcher.Invoke(() =>
+                {
+                    var entry = _dbTrendsLibrary.FirstOrDefault(x => x.Id == custId);
+                    if (entry != null) entry.LastGenerated = DateTime.Now;
+                    SaveDbTrendsLibrary();
+                    RefreshDbTrendsLibraryUI();
+
+                    // If this customer is currently active in the UI, update status labels
+                    if (_activeDbTrendsCustomer?.Id == custId)
+                    {
+                        DbTrendsProgress.Visibility = Visibility.Collapsed;
+                        DbTrendsRunBtn.IsEnabled    = true;
+                        if (ok)
+                        {
+                            DbTrendsStatusLabel.Text = $"\u2714 Saved to {System.IO.Path.GetFileName(outputPath)}";
+                            DbTrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
+                        }
+                        else
+                        {
+                            DbTrendsStatusLabel.Text = $"\u2716 Failed: {error}";
+                            DbTrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0xF8, 0x71, 0x71));
+                        }
                     }
                 });
             });
@@ -2489,7 +2589,8 @@ namespace TestApp
                 var dtos = _dbTrendsLibrary.Select(c => new
                 {
                     c.Id, c.Name, c.ApiHost, c.ApiKey, c.DownloadFolder, c.ReportsFolder,
-                    c.FailWindow, c.WatchIntervalSecs, c.LastGenerated
+                    c.FailWindow, c.WatchIntervalSecs, c.LastGenerated,
+                    c.MaxMonths, c.IncludeOldRuns, c.KnownRuns
                 });
                 var json = System.Text.Json.JsonSerializer.Serialize(dtos,
                     new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
@@ -2527,6 +2628,11 @@ namespace TestApp
                         ReportsFolder  = el.TryGetProperty("ReportsFolder",  out v) ? v.GetString() ?? "" : "",
                         FailWindow     = el.TryGetProperty("FailWindow",     out v) ? v.GetInt32() : 3,
                         WatchIntervalSecs = el.TryGetProperty("WatchIntervalSecs", out v) ? v.GetInt32() : 300,
+                        MaxMonths      = el.TryGetProperty("MaxMonths",      out v) ? v.GetInt32() : 0,
+                        IncludeOldRuns = el.TryGetProperty("IncludeOldRuns", out v) && v.GetBoolean(),
+                        KnownRuns      = el.TryGetProperty("KnownRuns", out v)
+                                         ? v.EnumerateArray().Select(r => r.GetString() ?? "").Where(s => s.Length > 0).ToList()
+                                         : new List<string>(),
                     });
                     existingNames.Add(name);
                     added++;
@@ -2655,9 +2761,17 @@ namespace TestApp
                                .Where(s => !string.IsNullOrWhiteSpace(s))
                                .ToList();
 
-                // Determine which runs are missing from disk (not in download folder yet)
-                var prefix     = customer.Name + "_";
-                var onDisk     = System.IO.Directory.Exists(customer.DownloadFolder)
+                // Merge API results into KnownRuns so we never lose track of a run
+                // even if the API stops returning it in future polls (e.g. it trims old runs).
+                foreach (var r in latest)
+                    if (!customer.KnownRuns.Contains(r, StringComparer.OrdinalIgnoreCase))
+                        customer.KnownRuns.Add(r);
+
+                // Determine which runs are missing from disk — check against ALL known runs,
+                // not just the current API response. This means a file deleted locally is
+                // always re-downloaded on the next tick, even if the API no longer lists it.
+                var prefix = customer.Name + "_";
+                var onDisk = System.IO.Directory.Exists(customer.DownloadFolder)
                     ? System.IO.Directory.GetFiles(customer.DownloadFolder, "*.xlsx")
                         .Select(f => System.IO.Path.GetFileNameWithoutExtension(f))
                         .Where(n => n.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
@@ -2665,20 +2779,26 @@ namespace TestApp
                         .ToHashSet(StringComparer.OrdinalIgnoreCase)
                     : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-                var missingRuns = latest.Where(r => !onDisk.Contains(r)).ToList();
+                // Runs that should be on disk but aren't — could be brand-new (from API)
+                // or previously downloaded and later deleted (from KnownRuns).
+                var missingRuns = customer.KnownRuns
+                    .Where(r => !onDisk.Contains(r))
+                    .ToList();
 
-                if (missingRuns.Count == 0 && onDisk.Count > 0)
+                if (latest.Count == 0 && onDisk.Count == 0 && customer.KnownRuns.Count == 0)
                 {
-                    // No new files to download — but still regenerate trends in case settings changed
+                    // API returned nothing and we have no history — nothing to do
                     if (_activeDbTrendsCustomer?.Id == customer.Id)
-                        DbTrendsWatchStatusLabel.Text = $"Last poll: {DateTime.Now:HH:mm:ss} · no new runs, regenerating…";
+                        DbTrendsWatchStatusLabel.Text = $"Last poll: {DateTime.Now:HH:mm:ss} · download folder empty, skipping";
+                    return;
                 }
                 else if (missingRuns.Count > 0)
                 {
                     if (_activeDbTrendsCustomer?.Id == customer.Id)
-                        DbTrendsWatchStatusLabel.Text = $"New runs: {string.Join(", ", missingRuns)} · downloading…";
+                        DbTrendsWatchStatusLabel.Text = $"Missing {missingRuns.Count} file(s): {string.Join(", ", missingRuns)} · downloading…";
 
-                    // Download only missing runs
+                    // Try to download each missing run — some may no longer be on the API
+                    // (deleted remotely), so failures are non-fatal and logged only.
                     foreach (var run in missingRuns)
                     {
                         var dlUrl  = $"{host}/spring/export-to-excel?projectName={encoded}&runNumber={Uri.EscapeDataString(run)}&result=final";
@@ -2688,15 +2808,20 @@ namespace TestApp
                             var bytes = await http.GetByteArrayAsync(dlUrl);
                             await System.IO.File.WriteAllBytesAsync(target, bytes);
                         }
-                        catch { /* non-fatal per-file failure */ }
+                        catch
+                        {
+                            // Run may no longer exist on the API — log via watch status if active
+                            if (_activeDbTrendsCustomer?.Id == customer.Id)
+                                Dispatcher.Invoke(() =>
+                                    DbTrendsWatchStatusLabel.Text = $"Last poll: {DateTime.Now:HH:mm:ss} · {run} unavailable on API, skipped");
+                        }
                     }
                 }
                 else
                 {
-                    // API returned runs but download folder doesn't exist or is empty
+                    // All known runs are present on disk — no downloads needed, still regenerate
                     if (_activeDbTrendsCustomer?.Id == customer.Id)
-                        DbTrendsWatchStatusLabel.Text = $"Last poll: {DateTime.Now:HH:mm:ss} · download folder empty, skipping";
-                    return;
+                        DbTrendsWatchStatusLabel.Text = $"Last poll: {DateTime.Now:HH:mm:ss} · no missing files, regenerating…";
                 }
 
                 // Re-generate trends using the customer's saved settings directly
@@ -2716,7 +2841,7 @@ namespace TestApp
                     DbTrendsLog.Text            = "";
                 }
 
-                System.Threading.Tasks.Task.Run(() =>
+                await System.Threading.Tasks.Task.Run(() =>
                 {
                     Action<string>? wLog = isCurrent
                         ? msg => Dispatcher.Invoke(() =>
@@ -2750,7 +2875,7 @@ namespace TestApp
                                 string shortName = System.IO.Path.GetFileName(outputPath);
                                 DbTrendsStatusLabel.Text = $"\u2714 Auto-updated {DateTime.Now:HH:mm:ss} \u2192 {shortName}";
                                 DbTrendsStatusLabel.Foreground = new SolidColorBrush(Color.FromRgb(0x4A, 0xDE, 0x80));
-                                DbTrendsWatchStatusLabel.Text  = $"Updated {DateTime.Now:HH:mm:ss} · {missingRuns.Count} new file(s)";
+                                DbTrendsWatchStatusLabel.Text  = $"Updated {DateTime.Now:HH:mm:ss} · {missingRuns.Count} file(s) downloaded";
                             }
                             else
                             {
@@ -3011,6 +3136,7 @@ namespace TestApp
                 ? c.FailWindow.ToString()
                 : _settings.TrendsFailWindow;
             TrendsMaxMonthsBox.Text         = c.MaxMonths > 0 ? c.MaxMonths.ToString() : "0";
+            TrendsWatchIntervalBox.Text     = c.WatchIntervalSecs > 0 ? c.WatchIntervalSecs.ToString() : "60";
             TrendsIncludeOldRunsCheck.IsChecked = c.IncludeOldRuns;
             TrendsRunsFolderLabel.Text = string.IsNullOrEmpty(c.RunsFolder) ? "Not set" : c.RunsFolder;
             TrendsRunsFolderLabel.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(
@@ -3068,7 +3194,7 @@ namespace TestApp
             existing.FailWindow    = int.TryParse(TrendsFailWindowBox.Text.Trim(), out int ufv) && ufv >= 1 ? ufv : 0;
             existing.MaxMonths     = int.TryParse(TrendsMaxMonthsBox.Text.Trim(), out int umm) && umm > 0 ? umm : 0;
             existing.IncludeOldRuns = TrendsIncludeOldRunsCheck.IsChecked == true;
-            // WatchIntervalSecs is edited via the Settings page; preserve existing value here
+            existing.WatchIntervalSecs = int.TryParse(TrendsWatchIntervalBox.Text.Trim(), out int uwi) && uwi > 0 ? uwi : 60;
 
             SaveTrendsLibrary();
             RefreshTrendsLibraryUI();
@@ -3091,6 +3217,7 @@ namespace TestApp
             }
             int addFw = int.TryParse(TrendsFailWindowBox.Text.Trim(), out int afv) && afv >= 1 ? afv : 0;
             int addMm = int.TryParse(TrendsMaxMonthsBox.Text.Trim(), out int amm) && amm > 0 ? amm : 0;
+            int addWi = int.TryParse(TrendsWatchIntervalBox.Text.Trim(), out int awi) && awi > 0 ? awi : 60;
             bool addOld = TrendsIncludeOldRunsCheck.IsChecked == true;
             var existing = _trendsLibrary.FirstOrDefault(c =>
                 c.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
@@ -3101,6 +3228,7 @@ namespace TestApp
                 existing.FailWindow     = addFw;
                 existing.MaxMonths      = addMm;
                 existing.IncludeOldRuns = addOld;
+                existing.WatchIntervalSecs = addWi;
             }
             else
             {
@@ -3110,7 +3238,7 @@ namespace TestApp
                     RunsFolder    = _trendsRunsFolder,
                     ReportsFolder = _trendsReportsFolder ?? "",
                     FailWindow    = addFw,
-                    WatchIntervalSecs = 0,
+                    WatchIntervalSecs = addWi,
                 });
             }
             SaveTrendsLibrary();
@@ -3410,6 +3538,23 @@ namespace TestApp
                     if (App.StartMinimized && _watchTimers.Count > 0)
                         _tray?.MinimizeToTray();
                 }), System.Windows.Threading.DispatcherPriority.Loaded);
+
+            // Restore DB watches unconditionally — DB watch state is persisted per-customer
+            // and is independent of the TrendsAutoWatch global setting.
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                foreach (var c in _dbTrendsLibrary)
+                {
+                    if (c.WatchEnabled &&
+                        !string.IsNullOrEmpty(c.ApiHost) &&
+                        !string.IsNullOrEmpty(c.DownloadFolder))
+                        DbStartCustomerWatch(c, silent: true);
+                }
+                DbRefreshWatchAllBtn();
+
+                if (App.StartMinimized && _dbWatchTimers.Count > 0)
+                    _tray?.MinimizeToTray();
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
 
             // Even without active watches, honour --minimized so the app
             // doesn't pop up a window on a headless server after reboot.

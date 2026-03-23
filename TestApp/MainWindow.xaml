@@ -2725,10 +2725,12 @@
                                                 <RowDefinition Height="Auto"/>
                                             </Grid.RowDefinitions>
 
-                                            <!-- Customer name + Fail window + Max Months + Include old runs -->
+                                            <!-- Customer name + Fail window + Watch Interval + Max Months + Include old runs -->
                                             <Grid Grid.Row="0" Margin="0,0,0,12">
                                                 <Grid.ColumnDefinitions>
                                                     <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="12"/>
+                                                    <ColumnDefinition Width="90"/>
                                                     <ColumnDefinition Width="12"/>
                                                     <ColumnDefinition Width="90"/>
                                                     <ColumnDefinition Width="12"/>
@@ -2772,8 +2774,33 @@
                                                              FontFamily="Consolas, Segoe UI Mono" TextAlignment="Center"
                                                              TextChanged="TrendsField_Changed"/>
                                                 </StackPanel>
-                                                <!-- Max Months -->
+                                                <!-- Watch Interval -->
                                                 <StackPanel Grid.Column="4">
+                                                    <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                        <TextBlock Text="WATCH (s)"
+                                                                   FontSize="10" FontWeight="Bold" Foreground="#6B7A99"
+                                                                   FontFamily="Segoe UI Variable, Segoe UI" VerticalAlignment="Center"/>
+                                                        <Border Width="15" Height="15" CornerRadius="8" Background="#1E2640"
+                                                                Margin="4,0,0,0" VerticalAlignment="Center" Cursor="Help">
+                                                            <Border.ToolTip>
+                                                                <ToolTip MaxWidth="280">
+                                                                    <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#CBD5E1"
+                                                                               Text="How often (in seconds) Auto-Watch polls for new runs. Default is 60s."/>
+                                                                </ToolTip>
+                                                            </Border.ToolTip>
+                                                            <TextBlock Text="i" FontSize="9" FontWeight="Bold" Foreground="#60A5FA"
+                                                                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <TextBox x:Name="TrendsWatchIntervalBox" Text="60"
+                                                             Background="#161B2A" Foreground="#CBD5E1"
+                                                             BorderBrush="#252D42" FontSize="13" Height="34"
+                                                             Padding="10,0" VerticalContentAlignment="Center"
+                                                             FontFamily="Consolas, Segoe UI Mono" TextAlignment="Center"
+                                                             TextChanged="TrendsField_Changed"/>
+                                                </StackPanel>
+                                                <!-- Max Months -->
+                                                <StackPanel Grid.Column="6">
                                                     <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                                         <TextBlock Text="MAX MONTHS"
                                                                    FontSize="10" FontWeight="Bold" Foreground="#6B7A99"
@@ -2798,7 +2825,7 @@
                                                              TextChanged="TrendsField_Changed"/>
                                                 </StackPanel>
                                                 <!-- Include Old Runs checkbox -->
-                                                <StackPanel Grid.Column="6" VerticalAlignment="Bottom">
+                                                <StackPanel Grid.Column="8" VerticalAlignment="Bottom">
                                                     <CheckBox x:Name="TrendsIncludeOldRunsCheck"
                                                               Foreground="#CBD5E1" FontSize="11"
                                                               FontFamily="Segoe UI Variable, Segoe UI"
@@ -3133,10 +3160,12 @@
                                             <RowDefinition Height="Auto"/>
                                         </Grid.RowDefinitions>
 
-                                        <!-- Row 0: Customer Name + Fail Window + Max Months + Include Old Runs -->
+                                        <!-- Row 0: Customer Name + Fail Window + Watch Interval + Max Months + Include Old Runs -->
                                         <Grid Grid.Row="0" Margin="0,0,0,12">
                                             <Grid.ColumnDefinitions>
                                                 <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="12"/>
+                                                <ColumnDefinition Width="90"/>
                                                 <ColumnDefinition Width="12"/>
                                                 <ColumnDefinition Width="90"/>
                                                 <ColumnDefinition Width="12"/>
@@ -3181,8 +3210,33 @@
                                                          FontFamily="Consolas, Segoe UI Mono" TextAlignment="Center"
                                                          TextChanged="DbTrendsField_Changed"/>
                                             </StackPanel>
-                                            <!-- Max Months -->
+                                            <!-- Watch Interval -->
                                             <StackPanel Grid.Column="4">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
+                                                    <TextBlock Text="WATCH (s)"
+                                                               FontSize="10" FontWeight="Bold" Foreground="#6B7A99"
+                                                               FontFamily="Segoe UI Variable, Segoe UI" VerticalAlignment="Center"/>
+                                                    <Border Width="15" Height="15" CornerRadius="8" Background="#1E2640"
+                                                            Margin="4,0,0,0" VerticalAlignment="Center" Cursor="Help">
+                                                        <Border.ToolTip>
+                                                            <ToolTip MaxWidth="280">
+                                                                <TextBlock TextWrapping="Wrap" FontSize="11.5" Foreground="#CBD5E1"
+                                                                           Text="How often (in seconds) Auto-Watch polls for new runs. Default is 300s."/>
+                                                            </ToolTip>
+                                                        </Border.ToolTip>
+                                                        <TextBlock Text="i" FontSize="9" FontWeight="Bold" Foreground="#60A5FA"
+                                                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                    </Border>
+                                                </StackPanel>
+                                                <TextBox x:Name="DbTrendsWatchIntervalBox" Text="300"
+                                                         Background="#161B2A" Foreground="#CBD5E1"
+                                                         BorderBrush="#252D42" FontSize="13" Height="34"
+                                                         Padding="10,0" VerticalContentAlignment="Center"
+                                                         FontFamily="Consolas, Segoe UI Mono" TextAlignment="Center"
+                                                         TextChanged="DbTrendsField_Changed"/>
+                                            </StackPanel>
+                                            <!-- Max Months -->
+                                            <StackPanel Grid.Column="6">
                                                 <StackPanel Orientation="Horizontal" Margin="0,0,0,4">
                                                     <TextBlock Text="MAX MONTHS"
                                                                FontSize="10" FontWeight="Bold" Foreground="#6B7A99"
@@ -3207,11 +3261,13 @@
                                                          TextChanged="DbTrendsField_Changed"/>
                                             </StackPanel>
                                             <!-- Include Old Runs checkbox -->
-                                            <StackPanel Grid.Column="6" VerticalAlignment="Bottom">
+                                            <StackPanel Grid.Column="8" VerticalAlignment="Bottom">
                                                 <CheckBox x:Name="DbTrendsIncludeOldRunsCheck"
                                                           Foreground="#CBD5E1" FontSize="11"
                                                           FontFamily="Segoe UI Variable, Segoe UI"
                                                           VerticalAlignment="Center" Margin="0,0,0,8"
+                                                          Checked="DbTrendsIncludeOldRuns_Changed"
+                                                          Unchecked="DbTrendsIncludeOldRuns_Changed"
                                                           ToolTip="When checked, all runs within a month are included. When unchecked, only the latest run per month is kept.">
                                                     <TextBlock TextWrapping="Wrap" MaxWidth="110" Text="Include old runs of a month" FontSize="10" Foreground="#8B93A5"/>
                                                 </CheckBox>
